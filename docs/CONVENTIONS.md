@@ -163,3 +163,77 @@ class Fabric  : public Flow<Fabric>  { ... };
 - Forge / NeoForge 安装未接入，菜单里选择后会明确报"尚未接入"
 - QML 的 `clip` 只支持矩形裁剪；圆角裁剪需要自定义图元
 - `dist` 体积约 97MB（Qt 运行库 + qml 模块）
+
+---
+
+## 12. 六条纪律（原始表述）
+
+1. 模块 = `src/app/` 下的一级文件夹，类放在**全局命名空间**
+2. 组件 = 模块下的子文件夹，类放在**模块命名空间**（小写）
+3. 接口 = `src/include/` 里的纯虚类，接口的分类树也放在同一目录
+4. 只有 `namespace tools` 可以有自由函数，其余一律用类
+5. 受管对象用继承表达
+6. 管理器用组合表达
+
+补充：`app/` 放主体与模块，`json/` 只放默认值文件（不是解析器），模块不允许直接挂在 `src/` 下。
+
+## 13. UI 设计语言
+
+- 主色蓝、白色面板、灰色文字；圆角统一走 `Theme.radius` / `Theme.radiusSmall`
+- 顶栏**不透明蓝**，导航居中（启动 / 下载 / 服务器 / 设置），账号固定右上角
+- 背景是一张图，所有面板用 `GlassPanel` 做毛玻璃；列表项是圆角块，不用圆点前缀
+- 字号层级：页面标题 24、区块标题 13、正文 13、辅助 12、说明 11
+- 按钮：主操作用实心蓝，次操作用半透明白 + 主色描边
+
+## 14. Java 选择与 natives
+
+- `Environment::Pick(required)`：先找主版本完全相等的；没有就取**不低于要求的最低版本**（Java 17 的版本用 21 跑没问题）
+- 只有全部低于要求才报"Java 版本过低"
+- 用户在启动页手动选的 Java 通过 `Options.java_path` 覆盖自动选择
+- 1.19+ 的 natives 在 classpath 上，**没有 `natives` 声明就不要要求解压目录**
+- 老版本：classifier jar 必须下载，装完用 `tar -xf` 解压到 `<id>-natives`，并把嵌套目录里的 dll 平铺到根
+- 只有 classifier 的库**不进 classpath**（否则误报"缺少库文件"）
+
+## 15. 下载与传输
+
+- `Transfer` 默认 8 路并发；单个文件失败重试 3 次（间隔 300ms）
+- 计数必须**累加**：安装器分"核心文件 → 资源"两段各调一次 `Run`，覆盖计数会让"跳过"数字变少
+- 校验：先写 `.part`，比对 SHA1，通过后 rename；失败删除 `.part`
+- 资产用 `resources.download.minecraft.net/<前两位>/<hash>`
+- 下载进度通过 `Progress(label, done, total)` 回调，界面按 16/32 的步长节流
+
+## 16. JSON 解析
+
+- `Json::Parse` 容忍 UTF-8 BOM（`EF BB BF`）
+- 解析失败要给出"哪个文件、哪一段"的上下文，不要只回 `parse error`
+- 版本文件必须能解析出 `id` 才算有效版本
+
+## 17. 调试构建与日志
+
+- `RML_DEBUG` 只在 debug 配置定义；release 里不包含任何调试输出
+- 两种配置都带 `-mwindows`，不弹控制台
+- 日志：`%APPDATA%\RML\logs\rml-debug.log`，用 `qInstallMessageHandler` 写入
+- 启动游戏的 stdout/stderr 重定向到 `<gameDir>/logs/rml-launch.log`（启动前先 `EnsureDir`）
+- **不要自己截屏验证界面**，界面结论由用户给出
+
+## 18. 启动流程
+
+- `Build` 失败且 `missing` 非空 → **自动补齐**，补完重新 Build 再启动；界面不再提供"补齐文件"按钮
+- 启动按钮在 `busy` 或 `installingVersion` 非空时置灰
+- `Options`：`memory_mb`、`gc`（自动/G1/ZGC/Parallel → `-XX:+Use*GC`）、`jvm_args`（空格切分）、`java_path`
+- 这些设置由 `Bridge::applyLaunchOptions` 写回 `settings.json`，编辑即时生效
+
+## 19. 版本源
+
+- 版本清单来自 Mojang `piston-meta` 官方接口；内容源为 Modrinth 与 CurseForge
+- 分类：`type == release` → 正式版；命中愚人节 id 列表 → 愚人节版；其余 → 测试版
+- **愚人节 id 列表要每年手动补一行**（官方清单里没有类型字段），现在写在 `Mojang.cpp`
+- CurseForge 需要 `x-api-key`，放在 `%APPDATA%\RML\curseforge.key`，缺失时该源不可搜索
+
+## 20. 协作约定
+
+- 用户只看源码，不看长篇说明；不要主动写文档
+- 没有明确要求时不要新增功能；不确定的业务规则先问，不要自己定
+- 不要宣称"已修复"。没在用户环境验证过，就说明没验证
+- 交付前必须跑 `mingw32-make -j12 deploy` 并给出真实退出码
+- 遇到困难或做不下去，直接说，不要用半成品交差
