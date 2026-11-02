@@ -21,7 +21,7 @@ bool Cache::TryGet(const std::string& key, std::string& out, int max_age_seconds
 
     if (max_age_seconds > 0) {
         std::error_code ec;
-        const auto written = std::filesystem::last_write_time(std::filesystem::u8path(path), ec);
+        const auto written = std::filesystem::last_write_time(tools::ToPath(path), ec);
         if (ec) return false;
         const auto age = std::filesystem::file_time_type::clock::now() - written;
         if (age > std::chrono::seconds(max_age_seconds)) return false;

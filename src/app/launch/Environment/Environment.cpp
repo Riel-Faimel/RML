@@ -266,8 +266,8 @@ bool Environment::Install(int major, std::string& error) {
     std::error_code ec;
     for (const auto& child : tools::ListDirectories(root)) {
         if (child.rfind("jdk-", 0) == 0 || child.rfind("jre-", 0) == 0) {
-            fs::remove_all(fs::u8path(target), ec);
-            fs::rename(fs::u8path(tools::JoinPath(root, child)), fs::u8path(target), ec);
+            fs::remove_all(tools::ToPath(target), ec);
+            fs::rename(tools::ToPath(tools::JoinPath(root, child)), tools::ToPath(target), ec);
             break;
         }
     }

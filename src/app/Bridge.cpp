@@ -632,7 +632,7 @@ void Bridge::deleteVersionAt(int index) {
 
     const std::string dir = launch_.Versions().VersionDir(id);
     std::error_code ec;
-    std::filesystem::remove_all(std::filesystem::u8path(dir), ec);
+    std::filesystem::remove_all(tools::ToPath(dir), ec);
 
     launch_.Versions().Refresh();
     RefreshVersionList();

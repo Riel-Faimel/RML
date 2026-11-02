@@ -239,13 +239,13 @@ bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string&
     // LWJGL 3 的 jar 里 dll 在 windows/x64/... 下面，java.library.path 只认根目录，平铺一下
     namespace fs = std::filesystem;
     std::error_code walk_error;
-    for (const auto& entry : fs::recursive_directory_iterator(fs::u8path(natives_dir), walk_error)) {
+    for (const auto& entry : fs::recursive_directory_iterator(tools::ToPath(natives_dir), walk_error)) {
         if (walk_error || !entry.is_regular_file()) continue;
         if (entry.path().extension() != u8".dll") continue;
-        if (entry.path().parent_path() == fs::u8path(natives_dir)) continue;
+        if (entry.path().parent_path() == tools::ToPath(natives_dir)) continue;
 
         std::error_code move_error;
-        fs::rename(entry.path(), fs::u8path(natives_dir) / entry.path().filename(), move_error);
+        fs::rename(entry.path(), tools::ToPath(natives_dir) / entry.path().filename(), move_error);
     }
 
     // 没有 natives 的版本也给个空目录，java.library.path 指着它就行

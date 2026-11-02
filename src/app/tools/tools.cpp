@@ -28,31 +28,35 @@ std::string ToUtf8(const fs::path& path) {
 namespace tools {
 
 std::string ReadTextFile(const std::string& path) {
-    std::ifstream stream(fs::u8path(path), std::ios::binary);
+    std::ifstream stream(tools::ToPath(path), std::ios::binary);
     if (!stream) return {};
     return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
 }
 
 bool WriteTextFile(const std::string& path, std::string_view text) {
-    std::ofstream stream(fs::u8path(path), std::ios::binary | std::ios::trunc);
+    std::ofstream stream(tools::ToPath(path), std::ios::binary | std::ios::trunc);
     if (!stream) return false;
     stream.write(text.data(), static_cast<std::streamsize>(text.size()));
     return static_cast<bool>(stream);
 }
 
+std::filesystem::path ToPath(const std::string& text) {
+    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+}
+
 bool PathExists(const std::string& path) {
     std::error_code ec;
-    return fs::exists(fs::u8path(path), ec);
+    return fs::exists(tools::ToPath(path), ec);
 }
 
 bool IsDirectory(const std::string& path) {
     std::error_code ec;
-    return fs::is_directory(fs::u8path(path), ec);
+    return fs::is_directory(tools::ToPath(path), ec);
 }
 
 bool EnsureDir(const std::string& path, std::string& error) {
     std::error_code ec;
-    fs::create_directories(fs::u8path(path), ec);
+    fs::create_directories(tools::ToPath(path), ec);
     if (ec) {
         error = "mkdir 失败: " + path;
         return false;
@@ -82,7 +86,7 @@ bool EndsWith(std::string_view text, std::string_view suffix) {
 std::vector<std::string> ListDirectories(const std::string& path) {
     std::vector<std::string> out;
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(fs::u8path(path), ec)) {
+    for (const auto& entry : fs::directory_iterator(tools::ToPath(path), ec)) {
         if (entry.is_directory()) out.push_back(ToUtf8(entry.path().filename()));
     }
     return out;
@@ -91,7 +95,7 @@ std::vector<std::string> ListDirectories(const std::string& path) {
 std::vector<std::string> ListFiles(const std::string& path) {
     std::vector<std::string> out;
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(fs::u8path(path), ec)) {
+    for (const auto& entry : fs::directory_iterator(tools::ToPath(path), ec)) {
         if (entry.is_regular_file()) out.push_back(ToUtf8(entry.path().filename()));
     }
     return out;
@@ -115,7 +119,7 @@ bool HttpGet(const std::string& url, std::string& out, std::string& error) {
     if (!DownloadFile(url, temp, error)) return false;
     out = ReadTextFile(temp);
     std::error_code ec;
-    std::filesystem::remove(std::filesystem::u8path(temp), ec);
+    std::filesystem::remove(tools::ToPath(temp), ec);
     return true;
 }
 
@@ -187,7 +191,7 @@ bool FetchToFile(const std::string& url, const std::string& path,
         if (status < 200 || status >= 300) {
             error = "http_status_" + std::to_string(status);
         } else {
-            std::ofstream stream(fs::u8path(path), std::ios::binary | std::ios::trunc);
+            std::ofstream stream(tools::ToPath(path), std::ios::binary | std::ios::trunc);
             std::vector<char> buffer(64 * 1024);
             if (!stream) {
                 error = "open_failed: " + path;
@@ -241,7 +245,7 @@ bool HttpGet(const std::string& url, const std::vector<std::string>& headers, st
     if (!FetchToFile(url, temp, &headers, error)) return false;
     out = ReadTextFile(temp);
     std::error_code ec;
-    std::filesystem::remove(std::filesystem::u8path(temp), ec);
+    std::filesystem::remove(tools::ToPath(temp), ec);
     return !out.empty();
 }
 
@@ -381,7 +385,7 @@ std::string Sha1Hex(const void* data, size_t size) {
 }
 
 bool Sha1File(const std::string& path, std::string& hex) {
-    std::ifstream stream(fs::u8path(path), std::ios::binary);
+    std::ifstream stream(tools::ToPath(path), std::ios::binary);
     if (!stream) return false;
     std::string data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
     hex = Sha1Hex(data.data(), data.size());
@@ -391,6 +395,8 @@ bool Sha1File(const std::string& path, std::string& hex) {
 }  // namespace tools
 
 #if defined(_WIN32) && __GNUC__ < 14
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wattributes"
 // GCC 13 的 MinGW 头里没有这两个 time64 声明（GCC 14+ 自带），补一份实现
 // 但 -O2 下的 libstdc++ 会引用它们。自己提供实现，别让链接器去 DLL 里找。
 extern "C" {

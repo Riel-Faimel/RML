@@ -1,6 +1,7 @@
 // 唯一允许的自由函数集合。
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,6 +10,9 @@ namespace tools {
 
 std::string ReadTextFile(const std::string& path);
 bool WriteTextFile(const std::string& path, std::string_view text);
+// 统一把 UTF-8 字符串转成文件系统路径（避免 u8path 在 C++20 被弃用）
+std::filesystem::path ToPath(const std::string& text);
+
 bool PathExists(const std::string& path);
 bool IsDirectory(const std::string& path);
 bool EnsureDir(const std::string& path, std::string& error);

@@ -70,8 +70,8 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
 
                 if (ok) {
                     std::error_code ec;
-                    std::filesystem::rename(std::filesystem::u8path(part),
-                                            std::filesystem::u8path(task.dest), ec);
+                    std::filesystem::rename(tools::ToPath(part),
+                                            tools::ToPath(task.dest), ec);
                     if (ec) {
                         ok = false;
                         local_error = "落盘失败";
@@ -82,7 +82,7 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                     ++downloaded;
                 } else {
                     std::error_code ec;
-                    std::filesystem::remove(std::filesystem::u8path(part), ec);
+                    std::filesystem::remove(tools::ToPath(part), ec);
                     ++failed;
                     aborted = true;
                     std::lock_guard<std::mutex> lock(error_mutex);
