@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
 namespace launch {
@@ -36,6 +37,20 @@ void Version::Probe() {
         entry.directory = tools::JoinPath(versions_dir, id);
         entry.has_json = tools::PathExists(tools::JoinPath(entry.directory, id + ".json"));
         entry.has_jar = tools::PathExists(tools::JoinPath(entry.directory, id + ".jar"));
+
+        // 托管标记：有 rml.json 才是 RML 装出来的，其余都算外部版本
+        const std::string marker = tools::ReadTextFile(tools::JoinPath(entry.directory, "rml.json"));
+        if (!marker.empty()) {
+            Json::Value root;
+            Json json;
+            std::string error;
+            if (json.Parse(marker, root, error)) {
+                entry.managed = true;
+                entry.complete = root["complete"].AsBool(true);
+                entry.loader = root["loader"].AsString();
+            }
+        }
+
         entries_.push_back(std::move(entry));
     }
 
@@ -132,8 +147,13 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         }
         const Json::Value& classifiers = item["downloads"]["classifiers"];
         for (size_t k = 0; k < classifiers.Size(); ++k) {
-            library.classifier_paths[classifiers.KeyAt(k)] =
-                ArtifactPath(classifiers.At(k));
+            const Json::Value& artifact = classifiers.At(k);
+            Classifier classifier;
+            classifier.path = ArtifactPath(artifact);
+            classifier.url = artifact["url"].AsString();
+            classifier.sha1 = artifact["sha1"].AsString();
+            classifier.size = artifact["size"].AsInt(0);
+            library.classifiers[classifiers.KeyAt(k)] = std::move(classifier);
         }
         if (!library.name.empty()) detail.libraries.push_back(std::move(library));
     }

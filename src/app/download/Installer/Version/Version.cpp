@@ -1,5 +1,7 @@
 #include "app/download/Installer/Version/Version.h"
 
+#include <filesystem>
+
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -79,14 +81,35 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules)) continue;
         std::string relative = library.path.empty() ? MavenToPath(library.name) : library.path;
-        if (relative.empty() || library.url.empty()) continue;
+        if (!relative.empty() && !library.url.empty()) {
+            Transfer::Task task;
+            task.url = library.url;
+            task.sha1 = library.sha1;
+            task.dest = tools::JoinPath(libraries_root, relative);
+            task.label = relative;
+            task.size = library.size;
+            out.push_back(std::move(task));
+        }
+
+        // 老版本的 natives 是 classifier jar，也得下（1.13 之后就没了）
+        auto native = library.natives.find("windows");
+        if (native == library.natives.end()) continue;
+
+        std::string classifier = native->second;
+        const std::string arch = "64";  // 与 Starter 一致：x86_64
+        const std::string needle = "${arch}";
+        const size_t pos = classifier.find(needle);
+        if (pos != std::string::npos) classifier.replace(pos, needle.size(), arch);
+
+        auto file = library.classifiers.find(classifier);
+        if (file == library.classifiers.end() || file->second.url.empty()) continue;
 
         Transfer::Task task;
-        task.url = library.url;
-        task.sha1 = library.sha1;
-        task.dest = tools::JoinPath(libraries_root, relative);
-        task.label = relative;
-        task.size = library.size;
+        task.url = file->second.url;
+        task.sha1 = file->second.sha1;
+        task.dest = tools::JoinPath(libraries_root, file->second.path);
+        task.label = file->second.path;
+        task.size = file->second.size;
         out.push_back(std::move(task));
     }
 
@@ -167,7 +190,66 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
     if (!BuildAssetTasks(detail, assets, error)) return false;
     if (!transfer.Run(assets, progress, result, error)) return false;
 
+    if (!ExtractNatives(detail, error)) return false;
+
     if (apply_defaults) ApplyDefaults(version_.GameDir());
+    return true;
+}
+
+bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
+                          const std::string& loader, bool complete) {
+    const std::string dir = tools::JoinPath(tools::JoinPath(game_dir, "versions"), id);
+    std::string error;
+    if (!tools::EnsureDir(dir, error)) return false;
+
+    Json::Value root = Json::Value::Object();
+    root.Set("managed", Json::Value::Bool(true));
+    root.Set("loader", Json::Value::String(loader));
+    root.Set("complete", Json::Value::Bool(complete));
+    return tools::WriteTextFile(tools::JoinPath(dir, "rml.json"), root.Dump());
+}
+
+bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string& error) const {
+    const std::string version_dir = version_.VersionDir(detail.id);
+    const std::string natives_dir = tools::JoinPath(version_dir, detail.id + "-natives");
+    const std::string libraries_root = tools::JoinPath(version_.GameDir(), "libraries");
+
+    bool any = false;
+    for (const auto& library : detail.libraries) {
+        if (library.natives.find("windows") == library.natives.end()) continue;
+
+        std::string classifier = library.natives.at("windows");
+        const std::string needle = "${arch}";
+        const size_t pos = classifier.find(needle);
+        if (pos != std::string::npos) classifier.replace(pos, needle.size(), "64");
+
+        auto file = library.classifiers.find(classifier);
+        if (file == library.classifiers.end() || file->second.path.empty()) continue;
+
+        const std::string jar = tools::JoinPath(libraries_root, file->second.path);
+        if (!tools::PathExists(jar)) continue;  // 缺文件由下载阶段报告
+        any = true;
+
+        if (!tools::ExtractArchive(jar, natives_dir, error)) {
+            error = "解压 natives 失败(" + file->second.path + "): " + error;
+            return false;
+        }
+    }
+
+    // LWJGL 3 的 jar 里 dll 在 windows/x64/... 下面，java.library.path 只认根目录，平铺一下
+    namespace fs = std::filesystem;
+    std::error_code walk_error;
+    for (const auto& entry : fs::recursive_directory_iterator(fs::u8path(natives_dir), walk_error)) {
+        if (walk_error || !entry.is_regular_file()) continue;
+        if (entry.path().extension() != u8".dll") continue;
+        if (entry.path().parent_path() == fs::u8path(natives_dir)) continue;
+
+        std::error_code move_error;
+        fs::rename(entry.path(), fs::u8path(natives_dir) / entry.path().filename(), move_error);
+    }
+
+    // 没有 natives 的版本也给个空目录，java.library.path 指着它就行
+    if (!any) tools::EnsureDir(natives_dir, error);
     return true;
 }
 

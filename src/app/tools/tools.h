@@ -31,6 +31,9 @@ bool HttpGet(const std::string& url, const std::vector<std::string>& headers, st
 // 启动一个进程并等它结束；退出码 0 视为成功。
 bool RunAndWait(const std::vector<std::string>& args, std::string& error);
 
+// 解压（zip/tar.gz 都行，走系统自带的 bsdtar）
+bool ExtractArchive(const std::string& archive, const std::string& dest, std::string& error);
+
 // %APPDATA%\RML：RML 自己的数据根目录
 std::string DataRoot();
 

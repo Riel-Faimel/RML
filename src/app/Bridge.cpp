@@ -109,7 +109,20 @@ void Bridge::UpdateDetails() {
 
     loader_ = LoaderFromMainClass(detail.main_class);
 
-    details_ = QStringLiteral("需要 Java %1\n库文件 %2 个\n客户端 jar %3")
+    // 版本来源：RML 装的有 rml.json 标记，其余是外部放进来的
+    QString origin = QStringLiteral("外部版本");
+    for (const auto& entry : launch_.Versions().Entries()) {
+        if (entry.id != selected_.toStdString()) continue;
+        if (entry.managed) {
+            origin = entry.loader.empty() ? QStringLiteral("RML 安装")
+                                          : QStringLiteral("RML 安装 · %1").arg(FromStd(entry.loader));
+            if (!entry.complete) origin += QStringLiteral("（未完成）");
+        }
+        break;
+    }
+
+    details_ = QStringLiteral("%1\n需要 Java %2\n库文件 %3 个\n客户端 jar %4")
+                   .arg(origin)
                    .arg(detail.java_major)
                    .arg(detail.libraries.size())
                    .arg(detail.client_jar.empty() ? QStringLiteral("缺失") : QStringLiteral("就绪"));
@@ -408,6 +421,8 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
             }
         }
 
+        download::installer::Version::WriteMarker(game_dir, target_id, loader_name, false);
+
         if (!download::installer::Version::WriteVersionJson(game_dir, target_id, version_json, error)) {
             QMetaObject::invokeMethod(
                 this,
@@ -446,10 +461,11 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
 
         QMetaObject::invokeMethod(
             this,
-            [this, ok, target_id, result, error] {
+            [this, ok, target_id, result, error, game_dir, loader_name] {
                 RefreshVersionList();
                 launch_.Versions().Select(target_id);
                 UpdateDetails();
+                if (ok) download::installer::Version::WriteMarker(game_dir, target_id, loader_name, true);
                 download_status_ = ok ? QStringLiteral("%1 安装完成：下载 %2，跳过 %3")
                                            .arg(FromStd(target_id))
                                            .arg(result.downloaded)

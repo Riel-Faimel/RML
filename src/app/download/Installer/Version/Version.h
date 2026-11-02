@@ -29,11 +29,16 @@ public:
     // 装完之后写默认设置：目前只有语言 -> 简体中文
     static void ApplyDefaults(const std::string& game_dir);
 
+    // 写托管标记 rml.json：complete=false 表示装到一半
+    static bool WriteMarker(const std::string& game_dir, const std::string& id,
+                            const std::string& loader, bool complete);
+
 private:
     bool BuildCoreTasks(const launch::Version::Detail& detail,
                         std::vector<Transfer::Task>& out, std::string& error) const;
     bool BuildAssetTasks(const launch::Version::Detail& detail,
                          std::vector<Transfer::Task>& out, std::string& error) const;
+    bool ExtractNatives(const launch::Version::Detail& detail, std::string& error) const;
 
     const launch::Version& version_;
 };

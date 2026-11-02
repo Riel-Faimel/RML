@@ -243,6 +243,19 @@ bool HttpGet(const std::string& url, const std::vector<std::string>& headers, st
     return !out.empty();
 }
 
+bool ExtractArchive(const std::string& archive, const std::string& dest, std::string& error) {
+    if (!PathExists(archive)) {
+        error = "压缩包不存在: " + archive;
+        return false;
+    }
+    std::string dir_error;
+    if (!EnsureDir(dest, dir_error)) {
+        error = dir_error;
+        return false;
+    }
+    return RunAndWait({"tar", "-xf", archive, "-C", dest}, error);
+}
+
 bool RunAndWait(const std::vector<std::string>& args, std::string& error) {
 #ifdef _WIN32
     std::string command_line;

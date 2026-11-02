@@ -16,6 +16,17 @@ public:
         std::string directory;
         bool has_json = false;
         bool has_jar = false;
+        // 由 rml.json 标记：外部放入的版本没有这个文件
+        bool managed = false;
+        bool complete = true;
+        std::string loader;
+    };
+
+    struct Classifier {
+        std::string path;  // 相对 libraries/
+        std::string url;
+        std::string sha1;
+        int64_t size = 0;
     };
 
     struct Library {
@@ -25,8 +36,8 @@ public:
         std::string sha1;
         int64_t size = 0;
         Json::Value rules;
-        std::map<std::string, std::string> natives;           // os -> classifier
-        std::map<std::string, std::string> classifier_paths;  // classifier -> 相对路径
+        std::map<std::string, std::string> natives;  // os -> classifier 模板
+        std::map<std::string, Classifier> classifiers;
     };
 
     struct Detail {

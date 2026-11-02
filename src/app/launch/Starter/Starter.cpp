@@ -224,6 +224,8 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     int missing_libraries = 0;
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules, features)) continue;
+        // 只有 classifier 的库（老版本 natives）不进 classpath，它们解压到 natives 目录
+        if (library.url.empty()) continue;
         std::string relative = library.path.empty() ? MavenToPath(library.name) : library.path;
         if (relative.empty()) continue;
         std::string full = tools::JoinPath(libraries_root, relative);
