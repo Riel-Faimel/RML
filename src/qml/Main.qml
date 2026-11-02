@@ -111,7 +111,7 @@ ApplicationWindow {
     // 调试构建：等界面渲染完截一张图，方便在没有显示器的环境里核对
     Timer {
         running: typeof rmlDebug !== "undefined" && rmlDebug
-        interval: 1800
+        interval: 3500
         repeat: false
         onTriggered: shell.grabToImage(function(result) {
             result.saveToFile(rmlShotPath)

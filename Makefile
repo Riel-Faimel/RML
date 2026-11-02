@@ -64,20 +64,25 @@ $(BUILD):
 	@ if not exist "$(BUILD)" mkdir "$(BUILD)"
 
 $(BUILD)/moc_Bridge.cpp: src/app/Bridge.h | $(BUILD)
+	@ echo   MOC  $<
 	@ $(MOC) $< -o $@
 
 $(BUILD)/%.o: src/%.cpp | $(BUILD)
 	@ if not exist "$(dir $@)" mkdir "$(dir $@)"
+	@ echo   CXX  $<
 	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(BUILD)/moc_Bridge.o: $(BUILD)/moc_Bridge.cpp | $(BUILD)
+	@ echo   CXX  $(BUILD)/moc_Bridge.cpp
 	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(CORE_OBJECTS) $(APP_OBJECTS)
+	@ echo   LINK $@
 	@ $(CXX) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 # 装配检查：同样的模块，不开窗口
 $(CHECK): $(CORE_OBJECTS) $(BUILD)/test/main.o
+	@ echo   LINK $@
 	@ $(CXX) $^ -L$(QT_DIR)/lib -lshell32 -lwinhttp -o $@
 
 check: $(CHECK)
@@ -90,7 +95,9 @@ run: $(TARGET)
 DIST := dist
 
 deploy:
+	@ echo   BUILD release
 	@ $(MAKE) CONFIG=release all
+	@ echo   DEPLOY dist
 	@ cmd /c tools\deploy.bat "$(CURDIR)/build/release/rml.exe" "$(QT_DIR)"
 
 clean:
