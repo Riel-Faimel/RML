@@ -34,20 +34,34 @@ void Version::Probe() {
     for (const auto& id : tools::ListDirectories(versions_dir)) {
         Entry entry;
         entry.id = id;
+        entry.name = id;
         entry.directory = tools::JoinPath(versions_dir, id);
-        entry.has_json = tools::PathExists(tools::JoinPath(entry.directory, id + ".json"));
+
+        // 必须能解析出 json 才算版本，坏目录不列出来
+        const std::string json_path = tools::JoinPath(entry.directory, id + ".json");
+        entry.has_json = tools::PathExists(json_path);
+        if (!entry.has_json) continue;
+
+        Json::Value version_root;
+        Json json;
+        std::string parse_error;
+        if (!json.Parse(tools::ReadTextFile(json_path), version_root, parse_error)) continue;
+        if (version_root["id"].AsString().empty()) continue;
+
         entry.has_jar = tools::PathExists(tools::JoinPath(entry.directory, id + ".jar"));
 
-        // 托管标记：有 rml.json 才是 RML 装出来的，其余都算外部版本
+        // 托管标记：rml.json 里的 managed 才算 RML 装出来的，其余都算外部版本
         const std::string marker = tools::ReadTextFile(tools::JoinPath(entry.directory, "rml.json"));
         if (!marker.empty()) {
             Json::Value root;
-            Json json;
+            Json marker_json;
             std::string error;
-            if (json.Parse(marker, root, error)) {
-                entry.managed = true;
+            if (marker_json.Parse(marker, root, error)) {
+                entry.managed = root["managed"].AsBool(false);
                 entry.complete = root["complete"].AsBool(true);
                 entry.loader = root["loader"].AsString();
+                const std::string name = root["name"].AsString();
+                if (!name.empty()) entry.name = name;
             }
         }
 
@@ -66,6 +80,25 @@ bool Version::Select(const std::string& id) {
         }
     }
     return false;
+}
+
+bool Version::Rename(const std::string& id, const std::string& name) {
+    const std::string dir = VersionDir(id);
+    if (!tools::IsDirectory(dir)) return false;
+
+    const std::string marker_path = tools::JoinPath(dir, "rml.json");
+    Json::Value root = Json::Value::Object();
+    Json json;
+    std::string error;
+    const std::string existing = tools::ReadTextFile(marker_path);
+    if (!existing.empty() && !json.Parse(existing, root, error)) return false;
+
+    root.Set("name", Json::Value::String(name));
+    if (!tools::WriteTextFile(marker_path, root.Dump())) return false;
+
+    Probe();
+    Select(id);
+    return true;
 }
 
 void Version::Refresh() {

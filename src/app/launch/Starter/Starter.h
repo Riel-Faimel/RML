@@ -18,6 +18,8 @@ public:
         int height = 480;
         std::string quick_play;  // host:port，空表示不直连
         std::string java_path;   // 手动指定 Java；空表示按版本要求自动选
+        std::string gc;          // 自动 / G1 / ZGC / Parallel
+        std::string jvm_args;    // 额外 JVM 参数，空格分隔
         std::string launcher_name = "RML";
         std::string launcher_version = "0.1";
     };

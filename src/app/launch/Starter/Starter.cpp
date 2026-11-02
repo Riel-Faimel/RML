@@ -290,6 +290,23 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     }
 
     command.args.push_back("-Xmx" + std::to_string(options.memory_mb) + "M");
+    if (options.gc == "G1") command.args.push_back("-XX:+UseG1GC");
+    else if (options.gc == "ZGC") command.args.push_back("-XX:+UseZGC");
+    else if (options.gc == "Parallel") command.args.push_back("-XX:+UseParallelGC");
+
+    // 额外 JVM 参数按空格切开
+    {
+        std::string token;
+        for (char ch : options.jvm_args) {
+            if (ch == ' ') {
+                if (!token.empty()) command.args.push_back(token);
+                token.clear();
+            } else {
+                token.push_back(ch);
+            }
+        }
+        if (!token.empty()) command.args.push_back(token);
+    }
     command.args.push_back(detail.main_class);
 
     if (detail.has_arguments) {

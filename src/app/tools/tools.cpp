@@ -389,3 +389,56 @@ bool Sha1File(const std::string& path, std::string& hex) {
 }
 
 }  // namespace tools
+
+#ifdef _WIN32
+// 这套 MinGW 的 libwinpthread 既没导出 nanosleep64 也没导出 clock_gettime64，
+// 但 -O2 下的 libstdc++ 会引用它们。自己提供实现，别让链接器去 DLL 里找。
+extern "C" {
+
+struct RmlTimespec {
+    long long tv_sec;
+    long tv_nsec;
+};
+
+int clock_gettime64(int clock_id, RmlTimespec* ts) {
+    if (ts == nullptr) return -1;
+
+    if (clock_id == 0) {  // CLOCK_REALTIME
+        FILETIME file_time{};
+        GetSystemTimePreciseAsFileTime(&file_time);
+        ULARGE_INTEGER ticks{};
+        ticks.LowPart = file_time.dwLowDateTime;
+        ticks.HighPart = file_time.dwHighDateTime;
+        const long long hundred_ns = static_cast<long long>(ticks.QuadPart) - 116444736000000000LL;
+        ts->tv_sec = hundred_ns / 10000000LL;
+        ts->tv_nsec = static_cast<long>((hundred_ns % 10000000LL) * 100);
+        return 0;
+    }
+
+    if (clock_id == 1) {  // CLOCK_MONOTONIC
+        LARGE_INTEGER frequency{};
+        LARGE_INTEGER counter{};
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&counter);
+        ts->tv_sec = counter.QuadPart / frequency.QuadPart;
+        ts->tv_nsec = static_cast<long>((counter.QuadPart % frequency.QuadPart) * 1000000000LL /
+                                        frequency.QuadPart);
+        return 0;
+    }
+
+    return -1;
+}
+
+int nanosleep64(const RmlTimespec* request, RmlTimespec* remaining) {
+    if (request == nullptr) return -1;
+    if (remaining != nullptr) {
+        remaining->tv_sec = 0;
+        remaining->tv_nsec = 0;
+    }
+    const long long ms = request->tv_sec * 1000 + request->tv_nsec / 1000000;
+    Sleep(static_cast<DWORD>(ms > 0 ? ms : 0));
+    return 0;
+}
+
+}  // extern "C"
+#endif

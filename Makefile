@@ -26,7 +26,7 @@ CPPFLAGS := -I. -Isrc -I$(BUILD) \
             -DRML_QML_DIR=\"$(CURDIR)/src/qml\" \
             -DRML_JSON_DIR=\"$(CURDIR)/src/json\"
 
-LDFLAGS := -mwindows -L$(QT_DIR)/lib
+LDFLAGS := -mwindows -L$(QT_DIR)/lib -static
 LDLIBS  := -lQt6Quick -lQt6QuickControls2 -lQt6Qml -lQt6Gui -lQt6Core -lwinhttp -static-libgcc -static-libstdc++
 
 ifeq ($(CONFIG),release)

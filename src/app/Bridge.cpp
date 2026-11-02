@@ -38,18 +38,18 @@ Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* par
       launch_(launch),
       account_name_(std::move(account_name)),
       memory_mb_(memory_mb) {
-    for (const auto& entry : launch_.Versions().Entries()) {
-        versions_ << FromStd(entry.id);
-    }
+    RefreshVersionList();
 
     if (!versions_.isEmpty()) {
         // 尊重 settings.json 里的选择；只有没有选择时才退到第一个
         const std::string saved = launch_.Versions().Selected();
-        if (!saved.empty() && versions_.contains(FromStd(saved))) {
+        if (!saved.empty() && version_ids_.contains(FromStd(saved))) {
             selected_ = FromStd(saved);
+            selected_index_ = version_ids_.indexOf(selected_);
         } else {
+            selected_index_ = 0;
             selected_ = versions_.first();
-            launch_.Versions().Select(selected_.toStdString());
+            launch_.Versions().Select(version_ids_.first().toStdString());
         }
         UpdateDetails();
     }
@@ -85,6 +85,25 @@ QString Bridge::BackgroundUrl() const {
     if (QFile::exists(local)) return QUrl::fromLocalFile(local).toString();
 
     return QUrl::fromLocalFile(QStringLiteral(RML_QML_DIR "/assets/background.png")).toString();
+}
+
+void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& jvmArgs) {
+    memory_mb_ = memoryMb < 512 ? 512 : memoryMb;
+    gc_mode_ = gc;
+    jvm_args_ = jvmArgs;
+
+    Json::Value root = Json::Value::Object();
+    root.Set("gameDir", Json::Value::String(launch_.Versions().GameDir()));
+    root.Set("selectedVersion", Json::Value::String(launch_.Versions().Selected()));
+    root.Set("username", Json::Value::String(account_name_.toStdString()));
+    root.Set("memoryMb", Json::Value::Int(memory_mb_));
+    root.Set("gc", Json::Value::String(gc_mode_.toStdString()));
+    root.Set("jvmArgs", Json::Value::String(jvm_args_.toStdString()));
+
+    const std::string settings_path =
+        tools::JoinPath(tools::JoinPath(tools::DataRoot(), "RML"), "settings.json");
+    tools::WriteTextFile(settings_path, root.Dump());
+    emit changed();
 }
 
 void Bridge::selectVersion(const QString& id) {
@@ -201,21 +220,82 @@ void Bridge::launchGame() {
     launch::Starter::Options options;
     options.memory_mb = memory_mb_;
     options.java_path = java_path_override_.toStdString();
+    options.gc = gc_mode_.toStdString();
+    options.jvm_args = jvm_args_.toStdString();
     launch::Starter::Command command;
     std::vector<launch::Starter::Missing> missing;
     std::string error;
 
+    // 缺文件不再让用户点“补齐”，直接作为错误处理路径自动补
     if (!launch_.GameStarter().Build(credentials, options, command, missing, error)) {
-        QStringList lines;
-        lines << QStringLiteral("无法启动：%1").arg(FromStd(error));
-        for (const auto& item : missing) {
-            lines << QStringLiteral("· %1（%2）").arg(FromStd(item.what)).arg(FromStd(item.hint));
+        if (missing.empty()) {
+            QStringList lines;
+            lines << QStringLiteral("无法启动：%1").arg(FromStd(error));
+            status_ = lines.join('\n');
+            emit changed();
+            return;
         }
-        status_ = lines.join('\n');
+
+        busy_ = true;
+        status_ = QStringLiteral("发现 %1 项文件缺失，正在自动补齐…").arg(missing.size());
         emit changed();
+
+        std::thread([this, credentials, options, missing] {
+            download::installer::Transfer::Result report;
+            std::string repair_error;
+            auto progress = [this](const std::string& label, int done, int total) {
+                if (done != total && done % 32 != 0) return;
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, label, done, total] {
+                        status_ = QStringLiteral("自动补齐 %1/%2  %3")
+                                      .arg(done)
+                                      .arg(total)
+                                      .arg(FromStd(label));
+                        emit changed();
+                    },
+                    Qt::QueuedConnection);
+            };
+
+            auto& installer = launch_.Downloader().Installers();
+            const bool repaired = installer.Versions().Install(installer.Transfers(), progress,
+                                                               report, repair_error);
+
+            launch::Starter::Command retry_command;
+            std::vector<launch::Starter::Missing> retry_missing;
+            std::string retry_error;
+            const bool built = repaired && launch_.GameStarter().Build(
+                                                credentials, options, retry_command, retry_missing,
+                                                retry_error);
+
+            bool started = false;
+            if (built) started = launch_.GameStarter().Start(retry_command, retry_error);
+
+            QMetaObject::invokeMethod(
+                this,
+                [this, repaired, built, started, report, repair_error, retry_error, retry_missing] {
+                    busy_ = false;
+                    if (!repaired) {
+                        status_ = QStringLiteral("自动补齐失败：%1").arg(FromStd(repair_error));
+                    } else if (!built) {
+                        QStringList lines;
+                        lines << QStringLiteral("补齐后仍无法启动：%1").arg(FromStd(retry_error));
+                        for (const auto& item : retry_missing) {
+                            lines << QStringLiteral("· %1（%2）").arg(FromStd(item.what)).arg(FromStd(item.hint));
+                        }
+                        status_ = lines.join('\n');
+                    } else if (!started) {
+                        status_ = QStringLiteral("启动失败：%1").arg(FromStd(retry_error));
+                    } else {
+                        busy_ = true;
+                        status_ = QStringLiteral("已自动补齐 %1 项，游戏已启动").arg(report.downloaded);
+                    }
+                    emit changed();
+                },
+                Qt::QueuedConnection);
+        }).detach();
         return;
     }
-
     if (!launch_.GameStarter().Start(command, error)) {
         status_ = QStringLiteral("启动失败：%1").arg(FromStd(error));
         emit changed();
@@ -353,6 +433,7 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
 
     download_busy_ = true;
     download_progress_ = 0.0;
+    installing_version_ = FromStd(id);
     download_status_ = QStringLiteral("正在安装 %1（%2）…").arg(FromStd(id)).arg(loader);
     emit downloadChanged();
 
@@ -517,8 +598,24 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
     }).detach();
 }
 
-void Bridge::openVersionFolder(const QString& id) {
-    const std::string dir = launch_.Versions().VersionDir(id.toStdString());
+std::string Bridge::versionIdAt(int index) const {
+    if (index < 0 || index >= version_ids_.size()) return {};
+    return version_ids_.at(index).toStdString();
+}
+
+void Bridge::selectVersionAt(int index) {
+    const std::string id = versionIdAt(index);
+    if (id.empty() || !launch_.Versions().Select(id)) return;
+    selected_ = FromStd(id);
+    selected_index_ = index;
+    UpdateDetails();
+    emit changed();
+}
+
+void Bridge::openVersionFolderAt(int index) {
+    const std::string id = versionIdAt(index);
+    if (id.empty()) return;
+    const std::string dir = launch_.Versions().VersionDir(id);
 #ifdef _WIN32
     const std::wstring wide(dir.begin(), dir.end());
     ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -527,23 +624,45 @@ void Bridge::openVersionFolder(const QString& id) {
 #endif
 }
 
-void Bridge::deleteVersion(const QString& id) {
-    const std::string dir = launch_.Versions().VersionDir(id.toStdString());
+void Bridge::deleteVersionAt(int index) {
+    const std::string id = versionIdAt(index);
+    if (id.empty()) return;
+
+    const std::string dir = launch_.Versions().VersionDir(id);
     std::error_code ec;
     std::filesystem::remove_all(std::filesystem::u8path(dir), ec);
 
     launch_.Versions().Refresh();
     RefreshVersionList();
-    UpdateDetails();
+    if (versions_.isEmpty()) {
+        selected_.clear();
+        selected_index_ = -1;
+        details_.clear();
+    } else {
+        selectVersionAt(qMin(index, static_cast<int>(versions_.size()) - 1));
+    }
     emit changed();
 }
+
+void Bridge::renameVersionAt(int index, const QString& name) {
+    const std::string id = versionIdAt(index);
+    if (id.empty() || name.trimmed().isEmpty()) return;
+    launch_.Versions().Rename(id, name.trimmed().toStdString());
+    RefreshVersionList();
+    emit changed();
+}
+
+
 void Bridge::RefreshVersionList() {
     versions_.clear();
+    version_ids_.clear();
     for (const auto& entry : launch_.Versions().Entries()) {
-        versions_ << FromStd(entry.id);
+        versions_ << FromStd(entry.name);
+        version_ids_ << FromStd(entry.id);
     }
-    const std::string selected = launch_.Versions().Selected();
-    if (!selected.empty()) selected_ = FromStd(selected);
+
+    selected_ = FromStd(launch_.Versions().Selected());
+    selected_index_ = version_ids_.indexOf(selected_);
 }
 
 void Bridge::searchContent(const QString& query, const QString& kind) {

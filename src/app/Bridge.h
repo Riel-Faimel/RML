@@ -32,6 +32,11 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList aprilVersions READ AprilVersions NOTIFY downloadChanged)
     Q_PROPERTY(double downloadProgress READ DownloadProgress NOTIFY downloadChanged)
     Q_PROPERTY(QStringList javaOptions READ JavaOptions NOTIFY changed)
+    Q_PROPERTY(int selectedIndex READ SelectedIndex NOTIFY changed)
+    Q_PROPERTY(QString installingVersion READ InstallingVersion NOTIFY changed)
+    Q_PROPERTY(int memoryMb READ MemoryMb NOTIFY changed)
+    Q_PROPERTY(QString gcMode READ GcMode NOTIFY changed)
+    Q_PROPERTY(QString jvmArgs READ JvmArgs NOTIFY changed)
 
 public:
     Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent = nullptr);
@@ -56,9 +61,19 @@ public:
     QStringList AprilVersions() const { return april_versions_; }
     double DownloadProgress() const { return download_progress_; }
     QStringList JavaOptions() const { return java_options_; }
+    int SelectedIndex() const { return selected_index_; }
+    QString InstallingVersion() const { return installing_version_; }
+    int MemoryMb() const { return memory_mb_; }
+    QString GcMode() const { return gc_mode_; }
+    QString JvmArgs() const { return jvm_args_; }
 
 public slots:
+    Q_INVOKABLE void selectVersionAt(int index);
+    Q_INVOKABLE void openVersionFolderAt(int index);
+    Q_INVOKABLE void deleteVersionAt(int index);
+    Q_INVOKABLE void renameVersionAt(int index, const QString& name);
     Q_INVOKABLE void selectVersion(const QString& id);
+    Q_INVOKABLE void applyLaunchOptions(int memory_mb, const QString& gc, const QString& jvm_args);
     Q_INVOKABLE void launchGame();
     Q_INVOKABLE void installJava(int major);
     Q_INVOKABLE void repair();
@@ -67,8 +82,7 @@ public slots:
     Q_INVOKABLE void installContent(int index);
     Q_INVOKABLE void selectContentSource(int index);
     Q_INVOKABLE void installGame(int kind, int index, const QString& loader);
-    Q_INVOKABLE void openVersionFolder(const QString& id);
-    Q_INVOKABLE void deleteVersion(const QString& id);
+
     Q_INVOKABLE void selectJava(int index);
 
 signals:
@@ -80,12 +94,18 @@ private:
     void UpdateDetails();
     void RefreshJavas();
     void RefreshVersionList();
+    std::string versionIdAt(int index) const;
     ContentSource* selectedSource();
 
     Launch& launch_;
     QString account_name_;
     int memory_mb_ = 4096;
     QStringList versions_;
+    QStringList version_ids_;
+    int selected_index_ = -1;
+    QString installing_version_;
+    QString gc_mode_ = QStringLiteral("自动");
+    QString jvm_args_;
     QString selected_;
     QString details_;
     QString java_info_;

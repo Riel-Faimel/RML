@@ -12,7 +12,8 @@ namespace launch {
 class Version {
 public:
     struct Entry {
-        std::string id;
+        std::string id;    // 目录名
+        std::string name;  // 显示名，来自 rml.json，缺省等于 id
         std::string directory;
         bool has_json = false;
         bool has_jar = false;
@@ -64,6 +65,9 @@ public:
     const std::vector<Entry>& Entries() const { return entries_; }
 
     bool Select(const std::string& id);
+
+    // 改名：写进版本的 rml.json，与目录名解耦
+    bool Rename(const std::string& id, const std::string& name);
     const std::string& Selected() const { return selected_; }
     bool HasSelection() const { return !selected_.empty(); }
 

@@ -8,7 +8,9 @@ Item {
     id: page
 
     property Item backdrop: Window.window ? Window.window.backdropRef : null
-    property string pendingDelete: ""
+    property int pendingDelete: -1
+    property int pendingRename: -1
+    property bool detailsOpen: false
 
     Dialog {
         id: confirmDelete
@@ -20,13 +22,39 @@ Item {
 
         Text {
             width: parent.width
-            text: qsTr("确定删除「%1」？版本目录会被永久删除。").arg(page.pendingDelete)
+            text: qsTr("确定删除「%1」？版本目录会被永久删除。").arg(page.pendingDelete >= 0 ? bridge.versions[page.pendingDelete] : "")
             wrapMode: Text.WordWrap
             color: Theme.text
             font.pixelSize: 13
         }
 
-        onAccepted: bridge.deleteVersion(page.pendingDelete)
+        onAccepted: bridge.deleteVersionAt(page.pendingDelete)
+    }
+
+    Dialog {
+        id: renameDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        title: qsTr("重命名版本")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        width: 360
+
+        TextField {
+            id: renameField
+            width: parent.width
+            placeholderText: qsTr("新名字")
+            font.pixelSize: 13
+            color: Theme.text
+            placeholderTextColor: Theme.textSecondary
+            background: Rectangle {
+                radius: Theme.radiusSmall
+                color: "#88FFFFFF"
+                border.width: 1
+                border.color: "#55FFFFFF"
+            }
+        }
+
+        onAccepted: bridge.renameVersionAt(page.pendingRename, renameField.text)
     }
 
     RowLayout {
@@ -73,9 +101,9 @@ Item {
                         width: ListView.view.width
                         height: 46
                         radius: Theme.radius
-                        color: modelData === bridge.selected ? Theme.primarySoft : "#66FFFFFF"
+                        color: index === bridge.selectedIndex ? Theme.primarySoft : "#66FFFFFF"
                         border.width: 1
-                        border.color: modelData === bridge.selected ? Theme.primary : "#55FFFFFF"
+                        border.color: index === bridge.selectedIndex ? Theme.primary : "#55FFFFFF"
 
                         Text {
                             anchors.fill: parent
@@ -85,13 +113,13 @@ Item {
                             text: modelData
                             elide: Text.ElideRight
                             font.pixelSize: 14
-                            color: modelData === bridge.selected ? Theme.primary : Theme.text
+                            color: index === bridge.selectedIndex ? Theme.primary : Theme.text
                         }
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: bridge.selectVersion(modelData)
+                            onClicked: bridge.selectVersionAt(index)
                         }
 
                         Button {
@@ -124,12 +152,20 @@ Item {
 
                             SoftMenuItem {
                                 text: qsTr("打开项目文件夹")
-                                onTriggered: bridge.openVersionFolder(modelData)
+                                onTriggered: bridge.openVersionFolderAt(index)
+                            }
+                            SoftMenuItem {
+                                text: qsTr("重命名")
+                                onTriggered: {
+                                    page.pendingRename = index
+                                    renameField.text = modelData
+                                    renameDialog.open()
+                                }
                             }
                             SoftMenuItem {
                                 text: qsTr("删除版本")
                                 onTriggered: {
-                                    page.pendingDelete = modelData
+                                    page.pendingDelete = index
                                     confirmDelete.open()
                                 }
                             }
@@ -245,7 +281,7 @@ Item {
                     Item { Layout.fillWidth: true }
 
                     Button {
-                        text: qsTr("补齐文件")
+                        text: page.detailsOpen ? qsTr("收起详情") : qsTr("详细信息")
                         enabled: !bridge.busy
                         implicitWidth: 120
                         implicitHeight: 46
@@ -265,12 +301,13 @@ Item {
                             border.color: Theme.primary
                         }
 
-                        onClicked: bridge.repair()
+                        onClicked: page.detailsOpen = !page.detailsOpen
                     }
 
                     Button {
-                        text: bridge.busy ? qsTr("运行中") : qsTr("启动")
-                        enabled: !bridge.busy && bridge.selected.length > 0
+                        text: bridge.installingVersion.length > 0 ? qsTr("安装中…")
+                              : (bridge.busy ? qsTr("运行中") : qsTr("启动"))
+                        enabled: !bridge.busy && bridge.installingVersion.length === 0 && bridge.selectedIndex >= 0
                         implicitWidth: 160
                         implicitHeight: 46
 
@@ -289,6 +326,116 @@ Item {
                         }
 
                         onClicked: bridge.launchGame()
+                    }
+                }
+            }
+
+            // 底部拉出的启动详情
+            Rectangle {
+                id: detailsPanel
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: page.detailsOpen ? 232 : 0
+                clip: true
+                color: "#F2F6FB"
+                border.width: page.detailsOpen ? 1 : 0
+                border.color: Theme.border
+                radius: Theme.radius
+                visible: height > 1
+
+                Behavior on height {
+                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 8
+
+                    Text {
+                        text: qsTr("启动详情")
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: Theme.text
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Text { text: qsTr("内存 MB"); color: Theme.textSecondary; font.pixelSize: 13 }
+                        SpinBox {
+                            id: memorySpin
+                            from: 512
+                            to: 32768
+                            stepSize: 512
+                            value: bridge.memoryMb
+                            editable: true
+                            implicitWidth: 130
+                        }
+
+                        Text { text: qsTr("GC"); color: Theme.textSecondary; font.pixelSize: 13 }
+                        SoftComboBox {
+                            id: gcBox
+                            implicitWidth: 130
+                            model: ["自动", "G1", "ZGC", "Parallel"]
+                            currentIndex: Math.max(0, model.indexOf(bridge.gcMode))
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Text { text: qsTr("JVM 参数"); color: Theme.textSecondary; font.pixelSize: 13 }
+                        TextField {
+                            id: argsField
+                            Layout.fillWidth: true
+                            text: bridge.jvmArgs
+                            placeholderText: qsTr("例如 -XX:+UseZGC -Dfile.encoding=UTF-8")
+                            font.pixelSize: 12
+                            color: Theme.text
+                            placeholderTextColor: Theme.textSecondary
+                            background: Rectangle {
+                                radius: Theme.radiusSmall
+                                color: "#88FFFFFF"
+                                border.width: 1
+                                border.color: "#55FFFFFF"
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("这些设置会写进 %APPDATA%\\RML\\settings.json，启动时生效")
+                        font.pixelSize: 11
+                        color: Theme.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Item { Layout.fillHeight: true }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            text: qsTr("应用")
+                            implicitWidth: 100
+                            implicitHeight: 34
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: 13
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: Theme.radiusSmall
+                                color: parent.pressed ? Theme.primaryPressed : Theme.primary
+                            }
+                            onClicked: bridge.applyLaunchOptions(memorySpin.value, gcBox.currentText, argsField.text)
+                        }
                     }
                 }
             }
