@@ -67,6 +67,7 @@ ComboBox {
         id: entry
         width: control.width - 8
         height: 34
+        text: modelData
         highlighted: control.highlightedIndex === index
 
         background: Rectangle {
