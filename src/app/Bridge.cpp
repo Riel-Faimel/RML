@@ -398,7 +398,7 @@ void Bridge::installGame(int kind, int index) {
         // 让版本管理重新扫描，再选中新版本去装
         launch_.Versions().Refresh();
         const bool selected = launch_.Versions().Select(id);
-        const bool ok = selected && installer.Versions().Install(installer.Transfers(), progress, result, error);
+        const bool ok = selected && installer.Versions().Install(installer.Transfers(), progress, result, error, true);
 
         QMetaObject::invokeMethod(
             this,

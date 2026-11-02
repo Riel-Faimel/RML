@@ -154,7 +154,7 @@ bool Version::Inspect(std::vector<std::string>& missing, std::string& error) con
 }
 
 bool Version::Install(const Transfer& transfer, const Transfer::Progress& progress,
-                      Transfer::Result& result, std::string& error) const {
+                      Transfer::Result& result, std::string& error, bool apply_defaults) const {
     launch::Version::Detail detail;
     if (!version_.LoadDetail(detail, error)) return false;
 
@@ -165,7 +165,42 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
     // 资源索引落地之后才知道有哪些对象
     std::vector<Transfer::Task> assets;
     if (!BuildAssetTasks(detail, assets, error)) return false;
-    return transfer.Run(assets, progress, result, error);
+    if (!transfer.Run(assets, progress, result, error)) return false;
+
+    if (apply_defaults) ApplyDefaults(version_.GameDir());
+    return true;
+}
+
+void Version::ApplyDefaults(const std::string& game_dir) {
+    const std::string path = tools::JoinPath(game_dir, "options.txt");
+    const std::string text = tools::ReadTextFile(path);
+
+    // 新装：直接给一份最小配置，游戏自己会补全其余项
+    if (text.empty()) {
+        tools::WriteTextFile(path, "lang:zh_cn\n");
+        return;
+    }
+
+    std::string out;
+    bool replaced = false;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find('\n', start);
+        std::string line = end == std::string::npos ? text.substr(start) : text.substr(start, end - start);
+
+        if (line.rfind("lang:", 0) == 0) {
+            line = "lang:zh_cn";
+            replaced = true;
+        }
+        out += line;
+        out += "\n";
+
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+
+    if (!replaced) out = "lang:zh_cn\n" + out;
+    tools::WriteTextFile(path, out);
 }
 
 bool Version::WriteVersionJson(const std::string& game_dir, const std::string& id,

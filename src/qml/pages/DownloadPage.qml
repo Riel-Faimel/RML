@@ -158,35 +158,11 @@ Item {
                     visible: page.category !== "version"
                     spacing: 10
 
-                    ComboBox {
+                    SoftComboBox {
                         id: sourceBox
                         Layout.preferredWidth: 170
-                        Layout.preferredHeight: 40
                         model: bridge.contentSources
                         onActivated: bridge.selectContentSource(index)
-
-                        palette.text: Theme.text
-                        palette.window: "#FFFFFF"
-                        palette.base: "#FFFFFF"
-                        palette.button: "#FFFFFF"
-                        palette.highlight: Theme.primary
-                        palette.highlightedText: "#FFFFFF"
-
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: "#88FFFFFF"
-                            border.width: 1
-                            border.color: "#55FFFFFF"
-                        }
-
-                        contentItem: Text {
-                            leftPadding: 12
-                            text: sourceBox.displayText
-                            color: Theme.text
-                            font.pixelSize: 14
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
                     }
 
                     Rectangle {

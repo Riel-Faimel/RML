@@ -309,6 +309,12 @@ bool Starter::Start(const Command& command, std::string& error) {
     const std::string log_dir = tools::JoinPath(command.working_dir, "logs");
     std::string log_path = tools::JoinPath(log_dir, "rml-launch.log");
 
+    std::string log_dir_error;
+    if (!tools::EnsureDir(log_dir, log_dir_error)) {
+        error = "无法创建日志目录: " + log_dir_error;
+        return false;
+    }
+
     SECURITY_ATTRIBUTES attributes{};
     attributes.nLength = sizeof(attributes);
     attributes.bInheritHandle = TRUE;
