@@ -318,6 +318,17 @@ Item {
                                 }
                             }
 
+                            SoftButton {
+                                text: qsTr("服务端")
+                                visible: page.category === "version"
+                                enabled: !bridge.downloadBusy
+                                implicitWidth: 68
+                                implicitHeight: 30
+                                textSize: 12
+                                onClicked: bridge.installServer(page.versionKind, index,
+                                                               page.loaderFor(versionRow.versionId))
+                            }
+
                             Button {
                                 text: qsTr("安装")
                                 enabled: !bridge.downloadBusy

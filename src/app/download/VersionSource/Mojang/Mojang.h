@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app/download/VersionSource/Cache/Cache.h"
+#include "app/download/VersionSource/Sources/Sources.h"
 
 namespace download {
 namespace versionsource {
@@ -21,7 +22,7 @@ public:
         Kind kind = Kind::Snapshot;
     };
 
-    explicit Mojang(const Cache& cache) : cache_(cache) {}
+    Mojang(const Cache& cache, const Sources& sources) : cache_(cache), sources_(sources) {}
 
     // 可用版本列表；优先用缓存，缓存过期才发请求
     bool List(std::vector<Entry>& out, std::string& error) const;
@@ -33,6 +34,7 @@ public:
 
 private:
     const Cache& cache_;
+    const Sources& sources_;
 };
 
 }  // namespace versionsource

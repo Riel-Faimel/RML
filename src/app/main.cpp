@@ -10,7 +10,9 @@
 #include <string>
 
 #include "app/Bridge.h"
+#include "app/ServerBridge.h"
 #include "app/launch/Launch.h"
+#include "app/server/Server.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -134,6 +136,10 @@ int main(int argc, char** argv) {
 
     Bridge bridge(launch, QString::fromStdString(settings.username), settings.memory_mb);
 
+    // 服务端模块独立于启动模块；服务器页用自己的桥
+    Server server(settings.game_dir);
+    ServerBridge server_bridge(server);
+
 #ifdef RML_DEBUG
     qInfo() << "数据目录:" << DataDir();
     qInfo() << "游戏目录:" << bridge.GameDir();
@@ -143,6 +149,7 @@ int main(int argc, char** argv) {
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("bridge"), &bridge);
+    engine.rootContext()->setContextProperty(QStringLiteral("serverBridge"), &server_bridge);
 
 #ifdef RML_DEBUG
     engine.rootContext()->setContextProperty(QStringLiteral("rmlDebug"), true);

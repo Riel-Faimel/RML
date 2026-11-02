@@ -19,8 +19,10 @@ public:
 
     // 缺什么下什么；已有且校验通过的直接跳过
     // apply_defaults：新装一个版本时为 true（会写 options.txt 默认中文），补齐时为 false
+    // assets_root：资源对象根地址（软件源可配），默认 Mojang 官方
     bool Install(const Transfer& transfer, const Transfer::Progress& progress,
-                 Transfer::Result& result, std::string& error, bool apply_defaults = false) const;
+                 Transfer::Result& result, std::string& error, bool apply_defaults = false,
+                 std::string assets_root = "https://resources.download.minecraft.net") const;
 
     // 把一个版本的 json 落到 versions/<id>/<id>.json（装新版本的第一步）
     static bool WriteVersionJson(const std::string& game_dir, const std::string& id,
@@ -36,7 +38,7 @@ public:
 private:
     bool BuildCoreTasks(const launch::Version::Detail& detail,
                         std::vector<Transfer::Task>& out, std::string& error) const;
-    bool BuildAssetTasks(const launch::Version::Detail& detail,
+    bool BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                          std::vector<Transfer::Task>& out, std::string& error) const;
     bool ExtractNatives(const launch::Version::Detail& detail, std::string& error) const;
 

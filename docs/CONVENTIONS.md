@@ -11,15 +11,23 @@ src/
   app/                   程序主体与各模块
     main.cpp             入口
     Bridge.*             应用层：把模块能力暴露给 QML
+    ServerBridge.*       应用层：服务器页专用桥
     tools/               工具模块（唯一允许自由函数的模块）
     launch/              启动模块
       Launch.h           组合：Version + Environment + Starter + Download
       Version/           版本探测与 json 合并
       Environment/       Java 发现与安装
       Starter/           命令行装配与进程启动
+    server/              服务端模块
+      Server.h           组合：Catalog + Runner（全局命名空间）
+      Catalog/           服务端安装扫描 + 实例清单（servers.json）
+      Runner/            服务端进程、stdin 命令、pid/停止
+      Installer/         原版 / Fabric 服务端下载
+      Instance/          实例数据结构
     download/            下载模块
       Download.h         组合：VersionSource + Installer
-      VersionSource/     版本/内容源（Mojang、Fabric meta、Modrinth、CurseForge、Cache）
+      VersionSource/     版本/内容源（Mojang、Fabric meta、Forge、NeoForge、Modrinth、CurseForge、Cache）
+      VersionSource/Sources/  软件源记录（sources.json，设置页可改）
       Installer/         传输、落盘、版本文件安装
       Flow/              安装策略（见 §2）
   include/               纯虚接口（AccountProvider、ContentSource…）
@@ -137,6 +145,9 @@ class Fabric  : public Flow<Fabric>  { ... };
 
 - 所有运行数据在 `%APPDATA%\RML\`
   - `settings.json`：gameDir / selectedVersion / username / memoryMb / gc / jvmArgs
+  - `sources.json`：软件源记录（mojang / assets / forge / neoforge / fabric），删除该文件即恢复默认
+  - `servers.json`：服务端实例（名称、目录、安装 id、端口、内存、玩法参数、pid）
+  - `background.png`：用户自定义背景（设置页选择图片后复制到这里）
   - `runtimes/`：RML 自己装的 Java
   - `curseforge.key`：CurseForge API key（没有则禁用该源）
   - `logs/rml-debug.log`：仅 debug 构建
@@ -160,7 +171,16 @@ class Fabric  : public Flow<Fabric>  { ... };
 ## 11. 已知限制
 
 - CurseForge 需要 API key，未配置时 `Ready()` 返回原因
-- Forge / NeoForge 安装未接入，菜单里选择后会明确报"尚未接入"
+- Forge / NeoForge 走安装器里的 `install_profile.json`：要解包安装器、下依赖库、按 `data` / `processors`
+  跑 java 处理器（`Processors`），所以安装时机器上必须有满足版本要求的 Java
+- NeoForge 的 artifact 位置分两段：1.20.1 在 `net/neoforged/forge`（1.20.1-47.1.x），
+  其余在 `net/neoforged/neoforge`（`21.1.x` / `26.1.2.x` 这类版本号）
+- Forge / NeoForge 的安装器和依赖来自 `maven.minecraftforge.net`、`maven.neoforged.net`，
+  可以在设置页改成自定义 maven 根；源不通时安装会明确报下载失败
+- 服务端只支持原版与 Fabric：原版下载 Mojang `server.jar`；Fabric 用 meta 的 `/server/json`
+  装原版 server.jar + loader 依赖，首次启动在实例目录生成 `.fabric/remappedJars`（需要可写）
+- 服务端日志在实例目录 `logs/console.log`，控制台只读尾部；优雅停止靠 stdin `stop`，
+  启动器重启后只能按记录的 pid 强制停止
 - QML 的 `clip` 只支持矩形裁剪；圆角裁剪需要自定义图元
 - `dist` 体积约 97MB（Qt 运行库 + qml 模块）
 

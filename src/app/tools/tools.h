@@ -19,6 +19,9 @@ bool EnsureDir(const std::string& path, std::string& error);
 std::string JoinPath(const std::string& left, const std::string& right);
 std::string ToLower(std::string_view text);
 bool EndsWith(std::string_view text, std::string_view suffix);
+
+// maven 坐标（group:artifact:version[:classifier][@ext]）→ libraries 下的相对路径
+std::string MavenToPath(std::string_view name);
 std::vector<std::string> ListDirectories(const std::string& path);
 std::vector<std::string> ListFiles(const std::string& path);
 
@@ -35,11 +38,19 @@ bool HttpGet(const std::string& url, const std::vector<std::string>& headers, st
 // 启动一个进程并等它结束；退出码 0 视为成功。
 bool RunAndWait(const std::vector<std::string>& args, std::string& error);
 
+// 同上，但把 stdout/stderr 重定向到 log_path（父进程不弹控制台，也拿不到屏幕输出）
+bool RunAndWait(const std::vector<std::string>& args, const std::string& log_path, std::string& error);
+
 // 睡一会儿（避免把 std::thread::sleep_for 拖进 winpthread 的 nanosleep64 依赖）
 void SleepMs(int milliseconds);
 
 // 解压（zip/tar.gz 都行，走系统自带的 bsdtar）
 bool ExtractArchive(const std::string& archive, const std::string& dest, std::string& error);
+
+// 只解一个条目（Forge/NeoForge 安装器 jar 里的 install_profile.json、version.json、
+// maven/ 下的库都靠它取）。out_path 是解出来的完整路径。
+bool ExtractEntry(const std::string& archive, const std::string& entry, const std::string& dest,
+                  std::string& out_path, std::string& error);
 
 // %APPDATA%\RML：RML 自己的数据根目录
 std::string DataRoot();

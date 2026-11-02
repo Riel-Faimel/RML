@@ -59,7 +59,7 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                     else tools::SleepMs(300);
                 }
 
-                if (ok) {
+                if (ok && !task.sha1.empty()) {
                     std::string actual;
                     if (!tools::Sha1File(part, actual) ||
                         tools::ToLower(actual) != tools::ToLower(task.sha1)) {

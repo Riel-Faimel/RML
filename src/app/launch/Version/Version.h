@@ -21,6 +21,8 @@ public:
         bool managed = false;
         bool complete = true;
         std::string loader;
+        // kind == "server" 的服务端安装，不进启动页
+        bool is_server = false;
     };
 
     struct Classifier {

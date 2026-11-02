@@ -29,50 +29,23 @@ bool MatchesRules(const Json::Value& rules) {
     return allowed;
 }
 
-std::string MavenToPath(const std::string& name) {
-    std::string text = name;
-    std::string extension = "jar";
-    size_t at = text.find('@');
-    if (at != std::string::npos) {
-        extension = text.substr(at + 1);
-        text.resize(at);
-    }
-    std::vector<std::string> parts;
-    size_t start = 0;
-    while (true) {
-        size_t pos = text.find(':', start);
-        if (pos == std::string::npos) {
-            parts.push_back(text.substr(start));
-            break;
-        }
-        parts.push_back(text.substr(start, pos - start));
-        start = pos + 1;
-    }
-    if (parts.size() < 3) return {};
-    std::string group = parts[0];
-    for (char& c : group) {
-        if (c == '.') c = '/';
-    }
-    std::string file = parts[1] + "-" + parts[2];
-    if (parts.size() >= 4) file += "-" + parts[3];
-    file += "." + extension;
-    return group + "/" + parts[1] + "/" + parts[2] + "/" + file;
-}
-
 }  // namespace
 
 bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
                              std::vector<Transfer::Task>& out, std::string& error) const {
     (void)error;
     const std::string game_dir = version_.GameDir();
-    const std::string version_dir = version_.VersionDir(detail.id);
+    const std::string selected = version_.Selected();
+    const std::string version_dir = version_.VersionDir(selected);
 
     if (!detail.client_url.empty()) {
         Transfer::Task task;
         task.url = detail.client_url;
         task.sha1 = detail.client_sha1;
-        task.dest = tools::JoinPath(version_dir, detail.id + ".jar");
-        task.label = detail.id + ".jar";
+        // 继承来的客户端 jar（Forge 继承原版）已经在原版目录里，别再拷一份到加载器目录
+        task.dest = detail.client_jar.empty() ? tools::JoinPath(version_dir, selected + ".jar")
+                                              : detail.client_jar;
+        task.label = selected + ".jar";
         task.size = detail.client_size;
         out.push_back(std::move(task));
     }
@@ -80,7 +53,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
     const std::string libraries_root = tools::JoinPath(game_dir, "libraries");
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules)) continue;
-        std::string relative = library.path.empty() ? MavenToPath(library.name) : library.path;
+        std::string relative = library.path.empty() ? tools::MavenToPath(library.name) : library.path;
         if (!relative.empty() && !library.url.empty()) {
             Transfer::Task task;
             task.url = library.url;
@@ -125,7 +98,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
     return true;
 }
 
-bool Version::BuildAssetTasks(const launch::Version::Detail& detail,
+bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                               std::vector<Transfer::Task>& out, std::string& error) const {
     const std::string game_dir = version_.GameDir();
     const std::string index_path =
@@ -148,13 +121,15 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail,
     }
 
     const std::string objects_root = tools::JoinPath(tools::JoinPath(game_dir, "assets"), "objects");
+    const std::string base =
+        assets_root.empty() ? "https://resources.download.minecraft.net" : assets_root;
     for (size_t i = 0; i < objects.Size(); ++i) {
         const Json::Value& object = objects.At(i);
         std::string hash = object["hash"].AsString();
         if (hash.size() < 3) continue;
 
         Transfer::Task task;
-        task.url = "https://resources.download.minecraft.net/" + hash.substr(0, 2) + "/" + hash;
+        task.url = tools::JoinPath(base, hash.substr(0, 2) + "/" + hash);
         task.sha1 = hash;
         task.dest = tools::JoinPath(tools::JoinPath(objects_root, hash.substr(0, 2)), hash);
         task.label = "assets/" + hash.substr(0, 2) + "/" + hash;
@@ -177,7 +152,8 @@ bool Version::Inspect(std::vector<std::string>& missing, std::string& error) con
 }
 
 bool Version::Install(const Transfer& transfer, const Transfer::Progress& progress,
-                      Transfer::Result& result, std::string& error, bool apply_defaults) const {
+                      Transfer::Result& result, std::string& error, bool apply_defaults,
+                      std::string assets_root) const {
     launch::Version::Detail detail;
     if (!version_.LoadDetail(detail, error)) return false;
 
@@ -187,7 +163,7 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
 
     // 资源索引落地之后才知道有哪些对象
     std::vector<Transfer::Task> assets;
-    if (!BuildAssetTasks(detail, assets, error)) return false;
+    if (!BuildAssetTasks(detail, assets_root, assets, error)) return false;
     if (!transfer.Run(assets, progress, result, error)) return false;
 
     if (!ExtractNatives(detail, error)) return false;
@@ -210,8 +186,9 @@ bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
 }
 
 bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string& error) const {
-    const std::string version_dir = version_.VersionDir(detail.id);
-    const std::string natives_dir = tools::JoinPath(version_dir, detail.id + "-natives");
+    const std::string selected = version_.Selected();
+    const std::string version_dir = version_.VersionDir(selected);
+    const std::string natives_dir = tools::JoinPath(version_dir, selected + "-natives");
     const std::string libraries_root = tools::JoinPath(version_.GameDir(), "libraries");
 
     bool any = false;

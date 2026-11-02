@@ -8,8 +8,6 @@ namespace versionsource {
 
 namespace {
 
-constexpr const char* kMojangUrl =
-    "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 constexpr int kMojangMaxAgeSeconds = 6 * 60 * 60;
 
 // Mojang 清单只标 release / snapshot，愚人节版是“伪装成快照”的，
@@ -42,10 +40,12 @@ Mojang::Kind Mojang::Classify(const std::string& id, const std::string& type) {
 }
 
 bool Mojang::List(std::vector<Entry>& out, std::string& error) const {
+    const std::string url = sources_.ManifestUrl();
+
     std::string text;
-    if (!cache_.TryGet(kMojangUrl, text, kMojangMaxAgeSeconds)) {
-        if (!tools::HttpGet(kMojangUrl, text, error)) return false;
-        cache_.Put(kMojangUrl, text);
+    if (!cache_.TryGet(url, text, kMojangMaxAgeSeconds)) {
+        if (!tools::HttpGet(url, text, error)) return false;
+        cache_.Put(url, text);
     }
 
     Json::Value root;

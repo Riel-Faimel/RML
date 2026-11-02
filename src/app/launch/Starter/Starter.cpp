@@ -57,36 +57,6 @@ bool MatchesRules(const Json::Value& rules, const std::set<std::string>& feature
     return allowed;
 }
 
-std::string MavenToPath(const std::string& name) {
-    std::string text = name;
-    std::string extension = "jar";
-    size_t at = text.find('@');
-    if (at != std::string::npos) {
-        extension = text.substr(at + 1);
-        text.resize(at);
-    }
-    std::vector<std::string> parts;
-    size_t start = 0;
-    while (true) {
-        size_t pos = text.find(':', start);
-        if (pos == std::string::npos) {
-            parts.push_back(text.substr(start));
-            break;
-        }
-        parts.push_back(text.substr(start, pos - start));
-        start = pos + 1;
-    }
-    if (parts.size() < 3) return {};
-    std::string group = parts[0];
-    for (char& c : group) {
-        if (c == '.') c = '/';
-    }
-    std::string file = parts[1] + "-" + parts[2];
-    if (parts.size() >= 4) file += "-" + parts[3];
-    file += "." + extension;
-    return group + "/" + parts[1] + "/" + parts[2] + "/" + file;
-}
-
 std::string Substitute(std::string_view text, const std::map<std::string, std::string>& variables) {
     std::string out;
     out.reserve(text.size());
@@ -225,8 +195,9 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules, features)) continue;
         // 只有 classifier 的库（老版本 natives）不进 classpath，它们解压到 natives 目录
-        if (library.url.empty()) continue;
-        std::string relative = library.path.empty() ? MavenToPath(library.name) : library.path;
+        // url 为空的库（Forge 安装器产出的补丁 jar）只要文件在，照样要进 classpath
+        if (library.url.empty() && library.path.empty()) continue;
+        std::string relative = library.path.empty() ? tools::MavenToPath(library.name) : library.path;
         if (relative.empty()) continue;
         std::string full = tools::JoinPath(libraries_root, relative);
         if (!tools::PathExists(full)) {
@@ -270,6 +241,8 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     variables["assets_root"] = tools::JoinPath(game_dir, "assets");
     variables["assets_index_name"] = detail.asset_index;
     variables["natives_directory"] = natives_dir;
+    // Forge 1.17+ / NeoForge 的 jvm 参数里会引用这两个
+    variables["library_directory"] = tools::JoinPath(game_dir, "libraries");
     variables["launcher_name"] = options.launcher_name;
     variables["launcher_version"] = options.launcher_version;
     variables["classpath"] = classpath_text;

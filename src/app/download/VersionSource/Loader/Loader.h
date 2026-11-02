@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app/download/VersionSource/Cache/Cache.h"
+#include "app/download/VersionSource/Sources/Sources.h"
 
 namespace download {
 namespace versionsource {
@@ -16,7 +17,7 @@ public:
         bool stable = false;
     };
 
-    explicit Loader(const Cache& cache) : cache_(cache) {}
+    Loader(const Cache& cache, const Sources& sources) : cache_(cache), sources_(sources) {}
 
     bool Fabric(const std::string& mc_version, std::vector<Entry>& out, std::string& error) const;
 
@@ -28,8 +29,13 @@ public:
     bool FabricProfile(const std::string& mc_version, const std::string& loader_version,
                        std::string& json, std::string& error) const;
 
+    // Fabric 服务端的版本描述（mainClass + libraries），用来拼服务端启动命令
+    bool FabricServerProfile(const std::string& mc_version, const std::string& loader_version,
+                             std::string& json, std::string& error) const;
+
 private:
     const Cache& cache_;
+    const Sources& sources_;
 };
 
 }  // namespace versionsource

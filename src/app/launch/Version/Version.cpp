@@ -9,13 +9,28 @@ namespace launch {
 
 namespace {
 
-Json::Value ParseArtifact(const Json::Value& value) {
-    return value;
-}
-
 std::string ArtifactPath(const Json::Value& artifact) {
     std::string path = artifact["path"].AsString();
     return path;
+}
+
+// 父版本和子版本的 arguments 都要保留（Forge 只在自己的 json 里补 --launchTarget 这类参数）
+Json::Value MergeArguments(const Json::Value& parent, const Json::Value& child) {
+    Json::Value out = Json::Value::Object();
+    for (const char* key : {"game", "jvm"}) {
+        Json::Value merged = Json::Value::Array();
+        const Json::Value& from_parent = parent[key];
+        const Json::Value& from_child = child[key];
+        for (size_t i = 0; i < from_parent.Size(); ++i) merged.Push(from_parent.At(i));
+        for (size_t i = 0; i < from_child.Size(); ++i) merged.Push(from_child.At(i));
+        if (merged.Size() > 0) out.Set(key, merged);
+    }
+    for (size_t i = 0; i < child.Size(); ++i) {
+        const std::string& key = child.KeyAt(i);
+        if (key == "game" || key == "jvm") continue;
+        out.Set(key, child.At(i));
+    }
+    return out;
 }
 
 }  // namespace
@@ -60,6 +75,7 @@ void Version::Probe() {
                 entry.managed = root["managed"].AsBool(false);
                 entry.complete = root["complete"].AsBool(true);
                 entry.loader = root["loader"].AsString();
+                entry.is_server = root["kind"].AsString() == "server";
                 const std::string name = root["name"].AsString();
                 if (!name.empty()) entry.name = name;
             }
@@ -172,6 +188,20 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         library.size = item["downloads"]["artifact"]["size"].AsInt(0);
         library.rules = item["rules"];
 
+        // 老版本（1.13 以前）的库：url 是仓库根，路径要从 maven 名字推；
+        // 连 url 都没有的（launchwrapper、guava 这种）默认走 libraries.minecraft.net
+        if (library.path.empty() && library.url.empty() && !library.name.empty() &&
+            !item["natives"].IsObject()) {
+            library.path = tools::MavenToPath(library.name);
+            std::string base = item["url"].AsString();
+            if (base.empty()) base = "https://libraries.minecraft.net/";
+            if (!library.path.empty()) {
+                library.url = base;
+                if (library.url.back() != '/') library.url += "/";
+                library.url += library.path;
+            }
+        }
+
         const Json::Value& natives = item["natives"];
         for (size_t k = 0; k < natives.Size(); ++k) {
             if (natives.At(k).IsString()) {
@@ -218,7 +248,10 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         if (!detail.has_arguments) {
             detail.arguments = parent.arguments;
             detail.has_arguments = parent.has_arguments;
-            detail.legacy_arguments = parent.legacy_arguments;
+            // 子版本自己的 minecraftArguments（Forge 的 --tweakClass）不能被父版本覆盖
+            if (detail.legacy_arguments.empty()) detail.legacy_arguments = parent.legacy_arguments;
+        } else if (parent.has_arguments) {
+            detail.arguments = MergeArguments(parent.arguments, detail.arguments);
         }
     }
 

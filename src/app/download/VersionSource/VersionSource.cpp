@@ -5,9 +5,12 @@
 namespace download {
 
 VersionSource::VersionSource()
-    : cache_(tools::JoinPath(tools::DataRoot(), "cache")),
-      mojang_(cache_),
-      loader_(cache_),
+    : sources_(tools::JoinPath(tools::DataRoot(), "sources.json")),
+      cache_(tools::JoinPath(tools::DataRoot(), "cache")),
+      mojang_(cache_, sources_),
+      loader_(cache_, sources_),
+      forge_(cache_, sources_),
+      neoforge_(cache_, sources_),
       modrinth_(cache_),
       curseforge_(cache_) {}
 

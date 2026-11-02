@@ -40,20 +40,36 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/launch/Version/Version.cpp \
                 src/app/launch/Environment/Environment.cpp \
                 src/app/launch/Starter/Starter.cpp \
+                src/app/download/VersionSource/Sources/Sources.cpp \
                 src/app/download/VersionSource/Cache/Cache.cpp \
                 src/app/download/VersionSource/Mojang/Mojang.cpp \
                 src/app/download/VersionSource/Loader/Loader.cpp \
+                src/app/download/VersionSource/Forge/Forge.cpp \
+                src/app/download/VersionSource/NeoForge/NeoForge.cpp \
                 src/app/download/VersionSource/Modrinth/Modrinth.cpp \
                 src/app/download/VersionSource/CurseForge/CurseForge.cpp \
                 src/app/download/VersionSource/VersionSource.cpp \
                 src/app/download/Installer/Transfer/Transfer.cpp \
                 src/app/download/Installer/Placement/Placement.cpp \
-                src/app/download/Installer/Version/Version.cpp
+                src/app/download/Installer/Version/Version.cpp \
+                src/app/download/Flow/Support.cpp \
+                src/app/download/Flow/Processors.cpp \
+                src/app/download/Flow/Profile.cpp \
+                src/app/download/Flow/Vanilla.cpp \
+                src/app/download/Flow/Fabric.cpp \
+                src/app/download/Flow/Forge.cpp \
+                src/app/download/Flow/NeoForge.cpp \
+                src/app/download/Flow/Dispatcher.cpp \
+                src/app/server/Catalog/Catalog.cpp \
+                src/app/server/Runner/Runner.cpp \
+                src/app/server/Installer/Installer.cpp \
+                src/app/server/Server.cpp
 
-APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp
+APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/ServerBridge.cpp
 
 CORE_OBJECTS := $(patsubst src/%.cpp,$(BUILD)/%.o,$(CORE_SOURCES))
-APP_OBJECTS  := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES)) $(BUILD)/moc_Bridge.o
+APP_OBJECTS  := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES)) \
+                $(BUILD)/moc_Bridge.o $(BUILD)/moc_ServerBridge.o
 
 TARGET := $(BUILD)/rml.exe
 CHECK  := $(BUILD)/rml_check.exe
@@ -67,6 +83,10 @@ $(BUILD)/moc_Bridge.cpp: src/app/Bridge.h | $(BUILD)
 	@ echo   MOC  $<
 	@ $(MOC) $< -o $@
 
+$(BUILD)/moc_ServerBridge.cpp: src/app/ServerBridge.h | $(BUILD)
+	@ echo   MOC  $<
+	@ $(MOC) $< -o $@
+
 $(BUILD)/%.o: src/%.cpp | $(BUILD)
 	@ if not exist "$(dir $@)" mkdir "$(dir $@)"
 	@ echo   CXX  $<
@@ -74,6 +94,10 @@ $(BUILD)/%.o: src/%.cpp | $(BUILD)
 
 $(BUILD)/moc_Bridge.o: $(BUILD)/moc_Bridge.cpp | $(BUILD)
 	@ echo   CXX  $(BUILD)/moc_Bridge.cpp
+	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+$(BUILD)/moc_ServerBridge.o: $(BUILD)/moc_ServerBridge.cpp | $(BUILD)
+	@ echo   CXX  $(BUILD)/moc_ServerBridge.cpp
 	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(CORE_OBJECTS) $(APP_OBJECTS)

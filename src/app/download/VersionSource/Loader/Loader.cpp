@@ -8,7 +8,7 @@ namespace versionsource {
 
 bool Loader::Fabric(const std::string& mc_version, std::vector<Entry>& out,
                     std::string& error) const {
-    const std::string url = "https://meta.fabricmc.net/v2/versions/loader/" + mc_version;
+    const std::string url = sources_.FabricRoot() + "/v2/versions/loader/" + mc_version;
 
     std::string text;
     if (!cache_.TryGet(url, text, 60 * 60)) {
@@ -55,8 +55,18 @@ bool Loader::FabricLatest(const std::string& mc_version, std::string& loader_ver
 
 bool Loader::FabricProfile(const std::string& mc_version, const std::string& loader_version,
                            std::string& json, std::string& error) const {
-    const std::string url = "https://meta.fabricmc.net/v2/versions/loader/" + mc_version + "/" +
+    const std::string url = sources_.FabricRoot() + "/v2/versions/loader/" + mc_version + "/" +
                             loader_version + "/profile/json";
+    if (cache_.TryGet(url, json, 0)) return true;
+    if (!tools::HttpGet(url, json, error)) return false;
+    cache_.Put(url, json);
+    return true;
+}
+
+bool Loader::FabricServerProfile(const std::string& mc_version, const std::string& loader_version,
+                                 std::string& json, std::string& error) const {
+    const std::string url = sources_.FabricRoot() + "/v2/versions/loader/" + mc_version + "/" +
+                            loader_version + "/server/json";
     if (cache_.TryGet(url, json, 0)) return true;
     if (!tools::HttpGet(url, json, error)) return false;
     cache_.Put(url, json);
