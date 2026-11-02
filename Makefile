@@ -96,7 +96,7 @@ DIST := dist
 
 deploy:
 	@ echo   BUILD release
-	@ $(MAKE) --no-print-directory CONFIG=release all
+	@ $(MAKE) -s --no-print-directory CONFIG=release all
 	@ echo   DEPLOY dist
 	@ tools\deploy.bat "$(CURDIR)/build/release/rml.exe" "$(QT_DIR)" > build\deploy.log 2>&1 || (echo [deploy] failed, see build\deploy.log & exit /b 1)
 
