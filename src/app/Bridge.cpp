@@ -363,6 +363,38 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
         std::string target_id = id;
 
         if (loader_name == "Fabric") {
+            // Fabric 的 json 用 inheritsFrom 指向原版，合并前必须先有原版版本描述
+            const std::string base_json = tools::JoinPath(
+                tools::JoinPath(tools::JoinPath(game_dir, "versions"), id), id + ".json");
+            if (!tools::PathExists(base_json)) {
+                std::vector<download::versionsource::Mojang::Entry> entries;
+                std::string base_url;
+                if (sources.Game().List(entries, error)) {
+                    for (const auto& entry : entries) {
+                        if (entry.id == id) {
+                            base_url = entry.url;
+                            break;
+                        }
+                    }
+                }
+
+                std::string base_text;
+                if (base_url.empty() || !sources.Game().Fetch(base_url, base_text, error) ||
+                    !download::installer::Version::WriteVersionJson(game_dir, id, base_text, error)) {
+                    QMetaObject::invokeMethod(
+                        this,
+                        [this, id, error] {
+                            download_status_ = QStringLiteral("原版 %1 的版本描述拿不到：%2")
+                                                   .arg(FromStd(id))
+                                                   .arg(FromStd(error));
+                            download_busy_ = false;
+                            emit downloadChanged();
+                        },
+                        Qt::QueuedConnection);
+                    return;
+                }
+            }
+
             std::string loader_version;
             if (!sources.Loaders().FabricLatest(id, loader_version, error) ||
                 !sources.Loaders().FabricProfile(id, loader_version, version_json, error)) {
@@ -461,11 +493,17 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
 
         QMetaObject::invokeMethod(
             this,
-            [this, ok, target_id, result, error, game_dir, loader_name] {
+            [this, ok, id, target_id, result, error, game_dir, loader_name] {
                 RefreshVersionList();
                 launch_.Versions().Select(target_id);
                 UpdateDetails();
-                if (ok) download::installer::Version::WriteMarker(game_dir, target_id, loader_name, true);
+                if (ok) {
+                    download::installer::Version::WriteMarker(game_dir, target_id, loader_name, true);
+                    // Fabric 装成功后，底下的原版也是我们装齐的
+                    if (loader_name == "Fabric") {
+                        download::installer::Version::WriteMarker(game_dir, id, "原版", true);
+                    }
+                }
                 download_status_ = ok ? QStringLiteral("%1 安装完成：下载 %2，跳过 %3")
                                            .arg(FromStd(target_id))
                                            .arg(result.downloaded)
