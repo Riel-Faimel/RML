@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 600
     visible: true
-    title: qsTr("RML")
+    title: qsTr("RML build 1002")
     color: "#0B1220"
 
     // 页面通过 Window.window.backdropRef 拿到背景，做毛玻璃

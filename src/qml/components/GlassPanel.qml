@@ -7,6 +7,11 @@ Item {
 
     property Item backdrop: null
     property real corner: 16
+    property bool squareTopLeft: false
+    property bool squareTopRight: false
+    property bool squareBottomLeft: false
+    property bool squareBottomRight: false
+    property bool showBorder: true
     property real tintOpacity: 0.52
     property real blurAmount: 0.85
     default property alias content: contentHost.data
@@ -24,13 +29,47 @@ Item {
         }
     }
 
-    Rectangle {
+    Item {
         id: maskShape
         anchors.fill: parent
-        radius: root.corner
-        color: "white"
         visible: false
         layer.enabled: true
+
+        Rectangle {
+            anchors.fill: parent
+            radius: root.corner
+            color: "white"
+        }
+
+        // 需要直角的角落用同色方块补齐，遮罩就变成非圆角
+        Rectangle {
+            width: root.corner
+            height: root.corner
+            color: "white"
+            visible: root.squareTopLeft
+            x: 0; y: 0
+        }
+        Rectangle {
+            width: root.corner
+            height: root.corner
+            color: "white"
+            visible: root.squareTopRight
+            x: parent.width - width; y: 0
+        }
+        Rectangle {
+            width: root.corner
+            height: root.corner
+            color: "white"
+            visible: root.squareBottomLeft
+            x: 0; y: parent.height - height
+        }
+        Rectangle {
+            width: root.corner
+            height: root.corner
+            color: "white"
+            visible: root.squareBottomRight
+            x: parent.width - width; y: parent.height - height
+        }
     }
 
     MultiEffect {
@@ -54,13 +93,14 @@ Item {
         anchors.fill: parent
         radius: root.corner
         color: "transparent"
-        border.width: 1
+        border.width: root.showBorder ? 1 : 0
         border.color: "#88FFFFFF"
     }
 
     Item {
         id: contentHost
         anchors.fill: parent
+        clip: true
     }
 
     onWidthChanged: crop.scheduleUpdate()

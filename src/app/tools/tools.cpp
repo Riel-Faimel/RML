@@ -390,8 +390,8 @@ bool Sha1File(const std::string& path, std::string& hex) {
 
 }  // namespace tools
 
-#ifdef _WIN32
-// 这套 MinGW 的 libwinpthread 既没导出 nanosleep64 也没导出 clock_gettime64，
+#if defined(_WIN32) && __GNUC__ < 14
+// GCC 13 的 MinGW 头里没有这两个 time64 声明（GCC 14+ 自带），补一份实现
 // 但 -O2 下的 libstdc++ 会引用它们。自己提供实现，别让链接器去 DLL 里找。
 extern "C" {
 

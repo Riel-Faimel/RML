@@ -12,6 +12,12 @@ Item {
     property int pendingRename: -1
     property bool detailsOpen: false
 
+    function applyOptions() {
+        var parsed = parseInt(memoryField.text)
+        var memory = isNaN(parsed) ? bridge.memoryMb : parsed
+        bridge.applyLaunchOptions(memory, gcBox.currentText, argsField.text)
+    }
+
     Dialog {
         id: confirmDelete
         modal: true
@@ -23,7 +29,7 @@ Item {
         Text {
             width: parent.width
             text: qsTr("确定删除「%1」？版本目录会被永久删除。").arg(page.pendingDelete >= 0 ? bridge.versions[page.pendingDelete] : "")
-            wrapMode: Text.WordWrap
+            wrapMode: Text.WrapAnywhere
             color: Theme.text
             font.pixelSize: 13
         }
@@ -182,14 +188,17 @@ Item {
             }
         }
 
-        // 右：详情
+        // 右：单块玻璃；D 在裁剪框内上滑，裁到 B 的上沿
         GlassPanel {
-            backdrop: page.backdrop
             Layout.fillWidth: true
             Layout.fillHeight: true
+            backdrop: page.backdrop
 
             ColumnLayout {
-                anchors.fill: parent
+                id: bodyColumn
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.margins: 24
                 spacing: 14
 
@@ -228,7 +237,7 @@ Item {
                     color: Theme.textSecondary
                     font.pixelSize: 13
                     lineHeight: 1.4
-                    wrapMode: Text.WordWrap
+                    wrapMode: Text.WrapAnywhere
                 }
 
                 Rectangle {
@@ -260,42 +269,148 @@ Item {
                         text: bridge.javaInfo
                         font.pixelSize: 12
                         color: Theme.textSecondary
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.WrapAnywhere
                     }
                 }
+            }
 
-                Item { Layout.fillHeight: true }
+            // 裁剪框：上边贴正文底，下边贴底栏上沿
+            Item {
+                id: clipBox
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: bodyColumn.bottom
+                anchors.bottom: bottomBar.top
+                anchors.leftMargin: 24
+                anchors.rightMargin: 24
+                clip: true
 
-                Text {
-                    Layout.fillWidth: true
-                    text: bridge.status
-                    font.pixelSize: 13
-                    color: Theme.textSecondary
-                    wrapMode: Text.WordWrap
+                Item {
+                    id: detailsLayer
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: detailsInner.implicitHeight
+                    // 初始值不依赖布局结果：没算好高度前先放到框外，且不播动画
+                    y: page.detailsOpen ? 14
+                                        : (clipBox.height > 0 ? clipBox.height : 5000)
+
+                    Behavior on y {
+                        enabled: clipBox.height > 0
+                        NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                    }
+
+                    ColumnLayout {
+                        id: detailsInner
+                        width: parent.width
+                        y: 0
+                        spacing: 8
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: "#33808080"
+                        }
+
+                        Text {
+                            text: qsTr("启动详情")
+                            font.pixelSize: 13
+                            font.bold: true
+                            color: Theme.text
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            Text {
+                                text: qsTr("内存 MB")
+                                font.pixelSize: 12
+                                color: Theme.textSecondary
+                            }
+
+                            SoftField {
+                                id: memoryField
+                                Layout.preferredWidth: 110
+                                text: String(bridge.memoryMb)
+                                validator: IntValidator { bottom: 512; top: 32768 }
+                                onTextEdited: applyTimer.restart()
+                            }
+
+                            Text {
+                                text: qsTr("GC")
+                                font.pixelSize: 12
+                                color: Theme.textSecondary
+                            }
+
+                            SoftComboBox {
+                                id: gcBox
+                                Layout.preferredWidth: 130
+                                model: ["自动", "G1", "ZGC", "Parallel"]
+                                currentIndex: Math.max(0, model.indexOf(bridge.gcMode))
+                                onActivated: page.applyOptions()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            Text {
+                                text: qsTr("JVM 参数")
+                                font.pixelSize: 12
+                                color: Theme.textSecondary
+                            }
+
+                            SoftField {
+                                id: argsField
+                                Layout.fillWidth: true
+                                text: bridge.jvmArgs
+                                placeholderText: qsTr("例如 -XX:+UseZGC -Dfile.encoding=UTF-8")
+                                onTextEdited: applyTimer.restart()
+                            }
+                        }
+                    }
                 }
+            }
+
+            // B：状态与按钮
+            Item {
+                id: bottomBar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 24
+                anchors.rightMargin: 24
+                height: 76
 
                 RowLayout {
-                    Layout.fillWidth: true
+                    anchors.fill: parent
                     spacing: 10
 
-                    Item { Layout.fillWidth: true }
+                    Text {
+                        Layout.fillWidth: true
+                        text: bridge.status
+                        font.pixelSize: 12
+                        color: Theme.textSecondary
+                        elide: Text.ElideRight
+                    }
 
                     Button {
-                        text: page.detailsOpen ? qsTr("收起详情") : qsTr("详细信息")
+                        text: page.detailsOpen ? qsTr("收起") : qsTr("详细信息")
                         enabled: !bridge.busy
-                        implicitWidth: 120
-                        implicitHeight: 46
+                        implicitWidth: 110
+                        implicitHeight: 40
 
                         contentItem: Text {
                             text: parent.text
                             color: parent.enabled ? Theme.primary : Theme.textSecondary
-                            font.pixelSize: 14
+                            font.pixelSize: 13
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
 
                         background: Rectangle {
-                            radius: Theme.radius
+                            radius: Theme.radiusSmall
                             color: parent.hovered ? Theme.primarySoft : "#88FFFFFF"
                             border.width: 1
                             border.color: Theme.primary
@@ -308,20 +423,20 @@ Item {
                         text: bridge.installingVersion.length > 0 ? qsTr("安装中…")
                               : (bridge.busy ? qsTr("运行中") : qsTr("启动"))
                         enabled: !bridge.busy && bridge.installingVersion.length === 0 && bridge.selectedIndex >= 0
-                        implicitWidth: 160
-                        implicitHeight: 46
+                        implicitWidth: 130
+                        implicitHeight: 40
 
                         contentItem: Text {
                             text: parent.text
                             color: "#FFFFFF"
-                            font.pixelSize: 15
+                            font.pixelSize: 14
                             font.bold: true
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
 
                         background: Rectangle {
-                            radius: Theme.radius
+                            radius: Theme.radiusSmall
                             color: !parent.enabled ? "#99FFFFFF" : (parent.pressed ? Theme.primaryPressed : Theme.primary)
                         }
 
@@ -330,114 +445,10 @@ Item {
                 }
             }
 
-            // 底部拉出的启动详情
-            Rectangle {
-                id: detailsPanel
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: page.detailsOpen ? 232 : 0
-                clip: true
-                color: "#F2F6FB"
-                border.width: page.detailsOpen ? 1 : 0
-                border.color: Theme.border
-                radius: Theme.radius
-                visible: height > 1
-
-                Behavior on height {
-                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                }
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    spacing: 8
-
-                    Text {
-                        text: qsTr("启动详情")
-                        font.pixelSize: 14
-                        font.bold: true
-                        color: Theme.text
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Text { text: qsTr("内存 MB"); color: Theme.textSecondary; font.pixelSize: 13 }
-                        SpinBox {
-                            id: memorySpin
-                            from: 512
-                            to: 32768
-                            stepSize: 512
-                            value: bridge.memoryMb
-                            editable: true
-                            implicitWidth: 130
-                        }
-
-                        Text { text: qsTr("GC"); color: Theme.textSecondary; font.pixelSize: 13 }
-                        SoftComboBox {
-                            id: gcBox
-                            implicitWidth: 130
-                            model: ["自动", "G1", "ZGC", "Parallel"]
-                            currentIndex: Math.max(0, model.indexOf(bridge.gcMode))
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Text { text: qsTr("JVM 参数"); color: Theme.textSecondary; font.pixelSize: 13 }
-                        TextField {
-                            id: argsField
-                            Layout.fillWidth: true
-                            text: bridge.jvmArgs
-                            placeholderText: qsTr("例如 -XX:+UseZGC -Dfile.encoding=UTF-8")
-                            font.pixelSize: 12
-                            color: Theme.text
-                            placeholderTextColor: Theme.textSecondary
-                            background: Rectangle {
-                                radius: Theme.radiusSmall
-                                color: "#88FFFFFF"
-                                border.width: 1
-                                border.color: "#55FFFFFF"
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("这些设置会写进 %APPDATA%\\RML\\settings.json，启动时生效")
-                        font.pixelSize: 11
-                        color: Theme.textSecondary
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Item { Layout.fillWidth: true }
-                        Button {
-                            text: qsTr("应用")
-                            implicitWidth: 100
-                            implicitHeight: 34
-                            contentItem: Text {
-                                text: parent.text
-                                color: "#FFFFFF"
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            background: Rectangle {
-                                radius: Theme.radiusSmall
-                                color: parent.pressed ? Theme.primaryPressed : Theme.primary
-                            }
-                            onClicked: bridge.applyLaunchOptions(memorySpin.value, gcBox.currentText, argsField.text)
-                        }
-                    }
-                }
+            Timer {
+                id: applyTimer
+                interval: 300
+                onTriggered: page.applyOptions()
             }
         }
     }
