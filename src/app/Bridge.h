@@ -23,11 +23,13 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList javas READ Javas NOTIFY changed)
     Q_PROPERTY(QString loader READ Loader NOTIFY changed)
     Q_PROPERTY(QString backgroundUrl READ BackgroundUrl CONSTANT)
-    Q_PROPERTY(QStringList gameVersions READ GameVersions NOTIFY downloadChanged)
     Q_PROPERTY(QStringList contentResults READ ContentResults NOTIFY downloadChanged)
     Q_PROPERTY(QString downloadStatus READ DownloadStatus NOTIFY downloadChanged)
     Q_PROPERTY(bool downloadBusy READ DownloadBusy NOTIFY downloadChanged)
     Q_PROPERTY(QStringList contentSources READ ContentSources NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList releaseVersions READ ReleaseVersions NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList snapshotVersions READ SnapshotVersions NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList aprilVersions READ AprilVersions NOTIFY downloadChanged)
 
 public:
     Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent = nullptr);
@@ -43,11 +45,13 @@ public:
     QStringList Javas() const { return javas_; }
     QString Loader() const { return loader_; }
     QString BackgroundUrl() const;
-    QStringList GameVersions() const { return game_versions_; }
     QStringList ContentResults() const { return content_results_; }
     QString DownloadStatus() const { return download_status_; }
     bool DownloadBusy() const { return download_busy_; }
     QStringList ContentSources() const { return content_sources_; }
+    QStringList ReleaseVersions() const { return release_versions_; }
+    QStringList SnapshotVersions() const { return snapshot_versions_; }
+    QStringList AprilVersions() const { return april_versions_; }
 
 public slots:
     Q_INVOKABLE void selectVersion(const QString& id);
@@ -58,6 +62,7 @@ public slots:
     Q_INVOKABLE void searchContent(const QString& query, const QString& kind);
     Q_INVOKABLE void installContent(int index);
     Q_INVOKABLE void selectContentSource(int index);
+    Q_INVOKABLE void installGame(int kind, int index);
 
 signals:
     void changed();
@@ -67,6 +72,7 @@ private:
     void RefreshStatus();
     void UpdateDetails();
     void RefreshJavas();
+    void RefreshVersionList();
     ContentSource* selectedSource();
 
     Launch& launch_;
@@ -82,10 +88,11 @@ private:
     bool busy_ = false;
     QTimer status_timer_;
 
-    QStringList game_versions_;
     QStringList content_results_;
     QStringList content_ids_;
     QStringList content_sources_;
+    QStringList release_versions_, snapshot_versions_, april_versions_;
+    QStringList release_ids_, snapshot_ids_, april_ids_;
     int content_source_ = 0;
     QString content_kind_ = QStringLiteral("mod");
     QString download_status_ = QStringLiteral("选一个分类开始");

@@ -168,5 +168,18 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
     return transfer.Run(assets, progress, result, error);
 }
 
+bool Version::WriteVersionJson(const std::string& game_dir, const std::string& id,
+                               const std::string& json, std::string& error) {
+    const std::string version_dir =
+        tools::JoinPath(tools::JoinPath(game_dir, "versions"), id);
+    if (!tools::EnsureDir(version_dir, error)) return false;
+    const std::string path = tools::JoinPath(version_dir, id + ".json");
+    if (!tools::WriteTextFile(path, json)) {
+        error = "写入失败: " + path;
+        return false;
+    }
+    return true;
+}
+
 }  // namespace installer
 }  // namespace download

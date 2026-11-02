@@ -53,6 +53,14 @@ bool Version::Select(const std::string& id) {
     return false;
 }
 
+void Version::Refresh() {
+    const std::string previous = selected_;
+    Probe();
+    if (!previous.empty()) {
+        if (!Select(previous)) selected_.clear();
+    }
+}
+
 bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, int depth) const {
     if (depth > 8) {
         error = "继承链过深: " + id;

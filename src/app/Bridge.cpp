@@ -245,23 +245,159 @@ void Bridge::loadGameVersions() {
         std::string error;
         const bool ok = launch_.Downloader().Sources().Game().List(entries, error);
 
-        QStringList lines;
+        QStringList release, snapshot, april;
+        QStringList release_ids, snapshot_ids, april_ids;
         if (ok) {
             for (const auto& entry : entries) {
-                lines << QStringLiteral("%1  ·  %2").arg(FromStd(entry.id)).arg(FromStd(entry.type));
+                const QString id = FromStd(entry.id);
+                switch (entry.kind) {
+                    case download::versionsource::Mojang::Kind::Release:
+                        release << id;
+                        release_ids << id;
+                        break;
+                    case download::versionsource::Mojang::Kind::AprilFools:
+                        april << id;
+                        april_ids << id;
+                        break;
+                    default:
+                        snapshot << id;
+                        snapshot_ids << id;
+                        break;
+                }
             }
         }
         QMetaObject::invokeMethod(
             this,
-            [this, ok, lines, error] {
-                game_versions_ = lines;
-                download_status_ = ok ? QStringLiteral("共 %1 个版本").arg(lines.size())
-                                      : QStringLiteral("获取失败：%1").arg(FromStd(error));
+            [this, ok, release, snapshot, april, release_ids, snapshot_ids, april_ids, error] {
+                release_versions_ = release;
+                snapshot_versions_ = snapshot;
+                april_versions_ = april;
+                release_ids_ = release_ids;
+                snapshot_ids_ = snapshot_ids;
+                april_ids_ = april_ids;
+                download_status_ =
+                    ok ? QStringLiteral("正式 %1 · 测试 %2 · 愚人节 %3")
+                             .arg(release.size())
+                             .arg(snapshot.size())
+                             .arg(april.size())
+                       : QStringLiteral("获取失败：%1").arg(FromStd(error));
                 download_busy_ = false;
                 emit downloadChanged();
             },
             Qt::QueuedConnection);
     }).detach();
+}
+
+void Bridge::installGame(int kind, int index) {
+    if (download_busy_) return;
+
+    const QStringList* ids = &release_ids_;
+    if (kind == 1) ids = &snapshot_ids_;
+    if (kind == 2) ids = &april_ids_;
+    if (index < 0 || index >= ids->size()) return;
+
+    const std::string id = ids->at(index).toStdString();
+    const std::string game_dir = launch_.Versions().GameDir();
+
+    // 版本清单里已经有 url，重新取一次即可（有缓存）
+    download_busy_ = true;
+    download_status_ = QStringLiteral("正在安装 %1…").arg(FromStd(id));
+    emit downloadChanged();
+
+    std::thread([this, id, game_dir] {
+        std::vector<download::versionsource::Mojang::Entry> entries;
+        std::string error;
+        if (!launch_.Downloader().Sources().Game().List(entries, error)) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, error] {
+                    download_status_ = QStringLiteral("获取清单失败：%1").arg(FromStd(error));
+                    download_busy_ = false;
+                    emit downloadChanged();
+                },
+                Qt::QueuedConnection);
+            return;
+        }
+
+        std::string url;
+        for (const auto& entry : entries) {
+            if (entry.id == id) {
+                url = entry.url;
+                break;
+            }
+        }
+        if (url.empty()) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, id] {
+                    download_status_ = QStringLiteral("清单里找不到 %1").arg(FromStd(id));
+                    download_busy_ = false;
+                    emit downloadChanged();
+                },
+                Qt::QueuedConnection);
+            return;
+        }
+
+        std::string json;
+        if (!launch_.Downloader().Sources().Game().Fetch(url, json, error) ||
+            !download::installer::Version::WriteVersionJson(game_dir, id, json, error)) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, error] {
+                    download_status_ = QStringLiteral("写入版本失败：%1").arg(FromStd(error));
+                    download_busy_ = false;
+                    emit downloadChanged();
+                },
+                Qt::QueuedConnection);
+            return;
+        }
+
+        auto& installer = launch_.Downloader().Installers();
+        download::installer::Transfer::Result result;
+        auto progress = [this, id](const std::string& label, int done, int total) {
+            if (done != total && done % 32 != 0) return;
+            QMetaObject::invokeMethod(
+                this,
+                [this, id, label, done, total] {
+                    download_status_ =
+                        QStringLiteral("%1  %2/%3  %4").arg(FromStd(id)).arg(done).arg(total).arg(FromStd(label));
+                    emit downloadChanged();
+                },
+                Qt::QueuedConnection);
+        };
+
+        // 让版本管理重新扫描，再选中新版本去装
+        launch_.Versions().Refresh();
+        const bool selected = launch_.Versions().Select(id);
+        const bool ok = selected && installer.Versions().Install(installer.Transfers(), progress, result, error);
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, id, result, error] {
+                RefreshVersionList();
+                launch_.Versions().Select(id);
+                UpdateDetails();
+                download_status_ =
+                    ok ? QStringLiteral("%1 安装完成：下载 %2，跳过 %3")
+                             .arg(FromStd(id))
+                             .arg(result.downloaded)
+                             .arg(result.skipped)
+                       : QStringLiteral("安装失败：%1").arg(FromStd(error));
+                download_busy_ = false;
+                emit downloadChanged();
+                emit changed();
+            },
+            Qt::QueuedConnection);
+    }).detach();
+}
+
+void Bridge::RefreshVersionList() {
+    versions_.clear();
+    for (const auto& entry : launch_.Versions().Entries()) {
+        versions_ << FromStd(entry.id);
+    }
+    const std::string selected = launch_.Versions().Selected();
+    if (!selected.empty()) selected_ = FromStd(selected);
 }
 
 void Bridge::searchContent(const QString& query, const QString& kind) {

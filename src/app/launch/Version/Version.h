@@ -56,6 +56,9 @@ public:
     const std::string& Selected() const { return selected_; }
     bool HasSelection() const { return !selected_.empty(); }
 
+    // 重新扫描 versions/（装完新版本后调用），保留仍然存在的选择
+    void Refresh();
+
     // 只解析选中版本。继承链在这里合并。
     bool LoadDetail(Detail& out, std::string& error) const;
 

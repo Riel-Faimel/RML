@@ -21,6 +21,10 @@ public:
     bool Install(const Transfer& transfer, const Transfer::Progress& progress,
                  Transfer::Result& result, std::string& error) const;
 
+    // 把一个版本的 json 落到 versions/<id>/<id>.json（装新版本的第一步）
+    static bool WriteVersionJson(const std::string& game_dir, const std::string& id,
+                                 const std::string& json, std::string& error);
+
 private:
     bool BuildCoreTasks(const launch::Version::Detail& detail,
                         std::vector<Transfer::Task>& out, std::string& error) const;

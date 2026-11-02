@@ -10,6 +10,7 @@ Item {
     property Item backdrop: Window.window ? Window.window.backdropRef : null
     property string category: "version"
     property string kind: "mod"
+    property int versionKind: 0
 
     function activate(key, targetKind) {
         page.category = key
@@ -103,6 +104,36 @@ Item {
                         font.bold: true
                         color: Theme.text
                         Layout.fillWidth: true
+                    }
+
+                    Repeater {
+                        model: [qsTr("正式版"), qsTr("测试版"), qsTr("愚人节版")]
+
+                        delegate: Button {
+                            id: kindTab
+                            text: modelData
+                            checkable: true
+                            checked: page.versionKind === index
+                            implicitHeight: 34
+                            implicitWidth: 88
+                            padding: 0
+                            onClicked: page.versionKind = index
+
+                            contentItem: Text {
+                                text: kindTab.text
+                                font.pixelSize: 13
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: kindTab.checked ? "#FFFFFF" : Theme.primary
+                            }
+
+                            background: Rectangle {
+                                radius: Theme.radiusSmall
+                                color: kindTab.checked ? Theme.primary : "#88FFFFFF"
+                                border.width: 1
+                                border.color: Theme.primary
+                            }
+                        }
                     }
 
                     Button {
@@ -213,7 +244,11 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 6
-                    model: page.category === "version" ? bridge.gameVersions : bridge.contentResults
+                    model: page.category !== "version"
+                           ? bridge.contentResults
+                           : (page.versionKind === 0 ? bridge.releaseVersions
+                                                     : (page.versionKind === 1 ? bridge.snapshotVersions
+                                                                               : bridge.aprilVersions))
 
                     delegate: Rectangle {
                         width: ListView.view.width
@@ -238,7 +273,6 @@ Item {
                             }
 
                             Button {
-                                visible: page.category !== "version"
                                 text: qsTr("安装")
                                 enabled: !bridge.downloadBusy
                                 implicitWidth: 76
@@ -254,7 +288,9 @@ Item {
                                     radius: Theme.radiusSmall
                                     color: parent.enabled ? Theme.primary : "#99FFFFFF"
                                 }
-                                onClicked: bridge.installContent(index)
+                                onClicked: page.category === "version"
+                                               ? bridge.installGame(page.versionKind, index)
+                                               : bridge.installContent(index)
                             }
                         }
                     }
