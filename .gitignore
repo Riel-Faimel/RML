@@ -1,0 +1,34 @@
+# 构建产物
+build/
+dist/
+
+# 目标文件与中间产物
+*.o
+*.obj
+*.d
+*.exe
+*.dll
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.res
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+*~
+
+# 系统垃圾
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 临时文件
+*.tmp
+*.log
+*.part
