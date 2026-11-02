@@ -8,6 +8,26 @@ Item {
     id: page
 
     property Item backdrop: Window.window ? Window.window.backdropRef : null
+    property string pendingDelete: ""
+
+    Dialog {
+        id: confirmDelete
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        title: qsTr("删除版本")
+        standardButtons: Dialog.Yes | Dialog.Cancel
+        width: 360
+
+        Text {
+            width: parent.width
+            text: qsTr("确定删除「%1」？版本目录会被永久删除。").arg(page.pendingDelete)
+            wrapMode: Text.WordWrap
+            color: Theme.text
+            font.pixelSize: 13
+        }
+
+        onAccepted: bridge.deleteVersion(page.pendingDelete)
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -60,7 +80,7 @@ Item {
                         Text {
                             anchors.fill: parent
                             anchors.leftMargin: 12
-                            anchors.rightMargin: 12
+                            anchors.rightMargin: 40
                             verticalAlignment: Text.AlignVCenter
                             text: modelData
                             elide: Text.ElideRight
@@ -72,6 +92,55 @@ Item {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: bridge.selectVersion(modelData)
+                        }
+
+                        Button {
+                            id: moreButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 30
+                            height: 30
+                            padding: 0
+                            onClicked: entryMenu.popup()
+
+                            contentItem: Text {
+                                text: "⋯"
+                                font.pixelSize: 18
+                                color: Theme.textSecondary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            background: Rectangle {
+                                radius: Theme.radiusSmall
+                                color: moreButton.hovered ? "#88FFFFFF" : "transparent"
+                            }
+                        }
+
+                        Menu {
+                            id: entryMenu
+                            y: moreButton.height
+
+                            background: Rectangle {
+                                implicitWidth: 180
+                                radius: Theme.radiusSmall
+                                color: "#F7F9FC"
+                                border.width: 1
+                                border.color: Theme.border
+                            }
+
+                            MenuItem {
+                                text: qsTr("打开项目文件夹")
+                                onTriggered: bridge.openVersionFolder(modelData)
+                            }
+                            MenuItem {
+                                text: qsTr("删除版本")
+                                onTriggered: {
+                                    page.pendingDelete = modelData
+                                    confirmDelete.open()
+                                }
+                            }
                         }
                     }
 

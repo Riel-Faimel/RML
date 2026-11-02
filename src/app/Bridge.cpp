@@ -6,8 +6,16 @@
 #include <QMetaObject>
 #include <QUrl>
 
+#include <filesystem>
 #include <thread>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
+#include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
 namespace {
@@ -312,7 +320,7 @@ void Bridge::loadGameVersions() {
     }).detach();
 }
 
-void Bridge::installGame(int kind, int index) {
+void Bridge::installGame(int kind, int index, const QString& loader) {
     if (download_busy_) return;
 
     const QStringList* ids = &release_ids_;
@@ -321,50 +329,86 @@ void Bridge::installGame(int kind, int index) {
     if (index < 0 || index >= ids->size()) return;
 
     const std::string id = ids->at(index).toStdString();
+    const std::string loader_name = loader.toStdString();
     const std::string game_dir = launch_.Versions().GameDir();
 
-    // 版本清单里已经有 url，重新取一次即可（有缓存）
+    if (loader_name != "原版" && loader_name != "Fabric") {
+        download_status_ = QStringLiteral("%1 安装尚未接入").arg(loader);
+        emit downloadChanged();
+        return;
+    }
+
     download_busy_ = true;
-    download_status_ = QStringLiteral("正在安装 %1…").arg(FromStd(id));
+    download_progress_ = 0.0;
+    download_status_ = QStringLiteral("正在安装 %1（%2）…").arg(FromStd(id)).arg(loader);
     emit downloadChanged();
 
-    std::thread([this, id, game_dir] {
-        std::vector<download::versionsource::Mojang::Entry> entries;
+    std::thread([this, id, loader_name, game_dir] {
+        auto& sources = launch_.Downloader().Sources();
         std::string error;
-        if (!launch_.Downloader().Sources().Game().List(entries, error)) {
-            QMetaObject::invokeMethod(
-                this,
-                [this, error] {
-                    download_status_ = QStringLiteral("获取清单失败：%1").arg(FromStd(error));
-                    download_busy_ = false;
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-            return;
-        }
+        std::string version_json;
+        std::string target_id = id;
 
-        std::string url;
-        for (const auto& entry : entries) {
-            if (entry.id == id) {
-                url = entry.url;
-                break;
+        if (loader_name == "Fabric") {
+            std::string loader_version;
+            if (!sources.Loaders().FabricLatest(id, loader_version, error) ||
+                !sources.Loaders().FabricProfile(id, loader_version, version_json, error)) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, error] {
+                        download_status_ = QStringLiteral("Fabric 加载器获取失败：%1").arg(FromStd(error));
+                        download_busy_ = false;
+                        emit downloadChanged();
+                    },
+                    Qt::QueuedConnection);
+                return;
+            }
+
+            Json::Value root;
+            Json json;
+            std::string parse_error;
+            if (json.Parse(version_json, root, parse_error) && !root["id"].AsString().empty()) {
+                target_id = root["id"].AsString();
+            } else {
+                target_id = "fabric-loader-" + loader_version + "-" + id;
+            }
+        } else {
+            std::vector<download::versionsource::Mojang::Entry> entries;
+            if (!sources.Game().List(entries, error)) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, error] {
+                        download_status_ = QStringLiteral("获取清单失败：%1").arg(FromStd(error));
+                        download_busy_ = false;
+                        emit downloadChanged();
+                    },
+                    Qt::QueuedConnection);
+                return;
+            }
+
+            std::string url;
+            for (const auto& entry : entries) {
+                if (entry.id == id) {
+                    url = entry.url;
+                    break;
+                }
+            }
+            if (url.empty() || !sources.Game().Fetch(url, version_json, error)) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, id, error] {
+                        download_status_ = QStringLiteral("拿不到 %1 的版本描述：%2")
+                                               .arg(FromStd(id))
+                                               .arg(FromStd(error));
+                        download_busy_ = false;
+                        emit downloadChanged();
+                    },
+                    Qt::QueuedConnection);
+                return;
             }
         }
-        if (url.empty()) {
-            QMetaObject::invokeMethod(
-                this,
-                [this, id] {
-                    download_status_ = QStringLiteral("清单里找不到 %1").arg(FromStd(id));
-                    download_busy_ = false;
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-            return;
-        }
 
-        std::string json;
-        if (!launch_.Downloader().Sources().Game().Fetch(url, json, error) ||
-            !download::installer::Version::WriteVersionJson(game_dir, id, json, error)) {
+        if (!download::installer::Version::WriteVersionJson(game_dir, target_id, version_json, error)) {
             QMetaObject::invokeMethod(
                 this,
                 [this, error] {
@@ -378,15 +422,15 @@ void Bridge::installGame(int kind, int index) {
 
         auto& installer = launch_.Downloader().Installers();
         download::installer::Transfer::Result result;
-        auto progress = [this, id](const std::string& label, int done, int total) {
+        auto progress = [this, target_id](const std::string& label, int done, int total) {
             if (done != total && done % 16 != 0) return;
             const double fraction = total > 0 ? static_cast<double>(done) / total : 0.0;
             QMetaObject::invokeMethod(
                 this,
-                [this, id, label, done, total, fraction] {
+                [this, target_id, label, done, total, fraction] {
                     download_progress_ = fraction;
                     download_status_ = QStringLiteral("%1  %2/%3  %4")
-                                           .arg(FromStd(id))
+                                           .arg(FromStd(target_id))
                                            .arg(done)
                                            .arg(total)
                                            .arg(FromStd(label));
@@ -395,23 +439,22 @@ void Bridge::installGame(int kind, int index) {
                 Qt::QueuedConnection);
         };
 
-        // 让版本管理重新扫描，再选中新版本去装
         launch_.Versions().Refresh();
-        const bool selected = launch_.Versions().Select(id);
-        const bool ok = selected && installer.Versions().Install(installer.Transfers(), progress, result, error, true);
+        const bool selected = launch_.Versions().Select(target_id);
+        const bool ok =
+            selected && installer.Versions().Install(installer.Transfers(), progress, result, error, true);
 
         QMetaObject::invokeMethod(
             this,
-            [this, ok, id, result, error] {
+            [this, ok, target_id, result, error] {
                 RefreshVersionList();
-                launch_.Versions().Select(id);
+                launch_.Versions().Select(target_id);
                 UpdateDetails();
-                download_status_ =
-                    ok ? QStringLiteral("%1 安装完成：下载 %2，跳过 %3")
-                             .arg(FromStd(id))
-                             .arg(result.downloaded)
-                             .arg(result.skipped)
-                       : QStringLiteral("安装失败：%1").arg(FromStd(error));
+                download_status_ = ok ? QStringLiteral("%1 安装完成：下载 %2，跳过 %3")
+                                           .arg(FromStd(target_id))
+                                           .arg(result.downloaded)
+                                           .arg(result.skipped)
+                                     : QStringLiteral("安装失败：%1").arg(FromStd(error));
                 download_busy_ = false;
                 emit downloadChanged();
                 emit changed();
@@ -420,6 +463,26 @@ void Bridge::installGame(int kind, int index) {
     }).detach();
 }
 
+void Bridge::openVersionFolder(const QString& id) {
+    const std::string dir = launch_.Versions().VersionDir(id.toStdString());
+#ifdef _WIN32
+    const std::wstring wide(dir.begin(), dir.end());
+    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#else
+    (void)dir;
+#endif
+}
+
+void Bridge::deleteVersion(const QString& id) {
+    const std::string dir = launch_.Versions().VersionDir(id.toStdString());
+    std::error_code ec;
+    std::filesystem::remove_all(std::filesystem::u8path(dir), ec);
+
+    launch_.Versions().Refresh();
+    RefreshVersionList();
+    UpdateDetails();
+    emit changed();
+}
 void Bridge::RefreshVersionList() {
     versions_.clear();
     for (const auto& entry : launch_.Versions().Entries()) {

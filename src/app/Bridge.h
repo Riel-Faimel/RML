@@ -66,7 +66,9 @@ public slots:
     Q_INVOKABLE void searchContent(const QString& query, const QString& kind);
     Q_INVOKABLE void installContent(int index);
     Q_INVOKABLE void selectContentSource(int index);
-    Q_INVOKABLE void installGame(int kind, int index);
+    Q_INVOKABLE void installGame(int kind, int index, const QString& loader);
+    Q_INVOKABLE void openVersionFolder(const QString& id);
+    Q_INVOKABLE void deleteVersion(const QString& id);
     Q_INVOKABLE void selectJava(int index);
 
 signals:

@@ -11,6 +11,16 @@ Item {
     property string category: "version"
     property string kind: "mod"
     property int versionKind: 0
+    property var loaderChoice: ({})
+
+    function loaderFor(id) { return page.loaderChoice[id] || "原版" }
+
+    function setLoader(id, name) {
+        var copy = {}
+        for (var key in page.loaderChoice) copy[key] = page.loaderChoice[key]
+        copy[id] = name
+        page.loaderChoice = copy
+    }
 
     function activate(key, targetKind) {
         page.category = key
@@ -242,6 +252,8 @@ Item {
                                                                                : bridge.aprilVersions))
 
                     delegate: Rectangle {
+                        id: versionRow
+                        property string versionId: modelData
                         width: ListView.view.width
                         height: 46
                         radius: Theme.radius
@@ -263,6 +275,56 @@ Item {
                                 color: Theme.text
                             }
 
+                            // 加载器：默认原版，点开可切换（菜单可扩展）
+                            Button {
+                                id: loaderButton
+                                visible: page.category === "version"
+                                text: page.loaderFor(versionRow.versionId)
+                                enabled: !bridge.downloadBusy
+                                implicitWidth: 84
+                                implicitHeight: 30
+                                padding: 0
+                                onClicked: loaderMenu.popup()
+
+                                contentItem: Text {
+                                    text: loaderButton.text
+                                    color: Theme.primary
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideRight
+                                }
+
+                                background: Rectangle {
+                                    radius: Theme.radiusSmall
+                                    color: loaderButton.hovered ? Theme.primarySoft : "#88FFFFFF"
+                                    border.width: 1
+                                    border.color: Theme.primary
+                                }
+
+                                Menu {
+                                    id: loaderMenu
+                                    y: loaderButton.height
+
+                                    background: Rectangle {
+                                        implicitWidth: 160
+                                        radius: Theme.radiusSmall
+                                        color: "#F7F9FC"
+                                        border.width: 1
+                                        border.color: Theme.border
+                                    }
+
+                                    Repeater {
+                                        model: ["原版", "Fabric", "Forge", "NeoForge"]
+
+                                        delegate: MenuItem {
+                                            text: modelData
+                                            onTriggered: page.setLoader(versionRow.versionId, modelData)
+                                        }
+                                    }
+                                }
+                            }
+
                             Button {
                                 text: qsTr("安装")
                                 enabled: !bridge.downloadBusy
@@ -280,7 +342,7 @@ Item {
                                     color: parent.enabled ? Theme.primary : "#99FFFFFF"
                                 }
                                 onClicked: page.category === "version"
-                                               ? bridge.installGame(page.versionKind, index)
+                                               ? bridge.installGame(page.versionKind, index, page.loaderFor(versionRow.versionId))
                                                : bridge.installContent(index)
                             }
                         }
