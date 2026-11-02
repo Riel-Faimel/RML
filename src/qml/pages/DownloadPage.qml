@@ -302,22 +302,15 @@ Item {
                                     border.color: Theme.primary
                                 }
 
-                                Menu {
+                                SoftMenu {
                                     id: loaderMenu
                                     y: loaderButton.height
-
-                                    background: Rectangle {
-                                        implicitWidth: 160
-                                        radius: Theme.radiusSmall
-                                        color: "#F7F9FC"
-                                        border.width: 1
-                                        border.color: Theme.border
-                                    }
+                                    width: 160
 
                                     Repeater {
                                         model: ["原版", "Fabric", "Forge", "NeoForge"]
 
-                                        delegate: MenuItem {
+                                        delegate: SoftMenuItem {
                                             text: modelData
                                             onTriggered: page.setLoader(versionRow.versionId, modelData)
                                         }

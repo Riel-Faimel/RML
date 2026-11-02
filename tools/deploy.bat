@@ -17,14 +17,14 @@ if not exist "%QTDIR%\bin\windeployqt.exe" (
 
 if exist "%ROOT%\dist" rmdir /s /q "%ROOT%\dist"
 mkdir "%ROOT%\dist" || exit /b 4
-copy /Y "%TARGET%" "%ROOT%\dist\rml.exe" >nul || exit /b 5
+copy /Y "%TARGET%" "%ROOT%\dist\Riel Minecraft Launcher.exe" >nul || exit /b 5
 xcopy /E /I /Y "%ROOT%\src\qml" "%ROOT%\dist\qml" >nul || exit /b 6
 xcopy /E /I /Y "%ROOT%\src\json" "%ROOT%\dist\json" >nul || exit /b 7
 
-"%QTDIR%\bin\windeployqt.exe" --qmldir "%ROOT%\src\qml" --no-translations --compiler-runtime "%ROOT%\dist\rml.exe"
+"%QTDIR%\bin\windeployqt.exe" --qmldir "%ROOT%\src\qml" --no-translations --compiler-runtime "%ROOT%\dist\Riel Minecraft Launcher.exe"
 if errorlevel 1 (
   echo [deploy] windeployqt failed, run it manually:
-  echo   "%QTDIR%\bin\windeployqt.exe" --qmldir "%ROOT%\src\qml" "%ROOT%\dist\rml.exe"
+  echo   "%QTDIR%\bin\windeployqt.exe" --qmldir "%ROOT%\src\qml" "%ROOT%\dist\Riel Minecraft Launcher.exe"
   exit /b 8
 )
 

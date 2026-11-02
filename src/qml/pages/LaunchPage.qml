@@ -118,23 +118,15 @@ Item {
                             }
                         }
 
-                        Menu {
+                        SoftMenu {
                             id: entryMenu
                             y: moreButton.height
 
-                            background: Rectangle {
-                                implicitWidth: 180
-                                radius: Theme.radiusSmall
-                                color: "#F7F9FC"
-                                border.width: 1
-                                border.color: Theme.border
-                            }
-
-                            MenuItem {
+                            SoftMenuItem {
                                 text: qsTr("打开项目文件夹")
                                 onTriggered: bridge.openVersionFolder(modelData)
                             }
-                            MenuItem {
+                            SoftMenuItem {
                                 text: qsTr("删除版本")
                                 onTriggered: {
                                     page.pendingDelete = modelData
