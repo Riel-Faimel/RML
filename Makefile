@@ -27,7 +27,7 @@ CPPFLAGS := -I. -Isrc -I$(BUILD) \
             -DRML_JSON_DIR=\"$(CURDIR)/src/json\"
 
 LDFLAGS := -mwindows -L$(QT_DIR)/lib
-LDLIBS  := -lQt6Quick -lQt6QuickControls2 -lQt6Qml -lQt6Gui -lQt6Core -lwinhttp
+LDLIBS  := -lQt6Quick -lQt6QuickControls2 -lQt6Qml -lQt6Gui -lQt6Core -lwinhttp -static-libgcc -static-libstdc++
 
 ifeq ($(CONFIG),release)
 CXXFLAGS := -std=c++20 -O2 -DNDEBUG -DQT_NO_DEBUG -MMD -MP

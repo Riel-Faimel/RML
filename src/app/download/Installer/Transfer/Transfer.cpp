@@ -56,7 +56,7 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                 for (int attempt = 0; ok && attempt < 3; ++attempt) {
                     if (tools::DownloadFile(task.url, part, local_error)) break;
                     if (attempt == 2) ok = false;
-                    else std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    else tools::SleepMs(300);
                 }
 
                 if (ok) {

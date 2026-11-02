@@ -1,7 +1,9 @@
 #include "app/tools/tools.h"
 
 #include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <thread>
 #include <fstream>
 #include <iterator>
 
@@ -241,6 +243,14 @@ bool HttpGet(const std::string& url, const std::vector<std::string>& headers, st
     std::error_code ec;
     std::filesystem::remove(std::filesystem::u8path(temp), ec);
     return !out.empty();
+}
+
+void SleepMs(int milliseconds) {
+#ifdef _WIN32
+    Sleep(static_cast<DWORD>(milliseconds));
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+#endif
 }
 
 bool ExtractArchive(const std::string& archive, const std::string& dest, std::string& error) {
