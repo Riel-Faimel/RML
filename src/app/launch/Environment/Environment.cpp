@@ -211,8 +211,21 @@ const Environment::Java* Environment::Pick(int required_major) const {
     for (const auto& java : javas_) {
         if (java.major == required_major) return &java;
     }
-    if (javas_.empty()) return nullptr;
-    return &javas_.front();  // 版本不符时先用最高的，Starter 会提示
+
+    // 没有正好匹配的，选不低于要求的最低版本：Java 17 的版本用 21 跑通常没问题
+    const Java* best = nullptr;
+    for (const auto& java : javas_) {
+        if (java.major < required_major) continue;
+        if (best == nullptr || java.major < best->major) best = &java;
+    }
+    return best;
+}
+
+const Environment::Java* Environment::Find(const std::string& path) const {
+    for (const auto& java : javas_) {
+        if (java.path == path) return &java;
+    }
+    return nullptr;
 }
 
 std::string Environment::ManagedRoot() { return tools::JoinPath(tools::DataRoot(), "runtimes"); }

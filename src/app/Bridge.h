@@ -30,6 +30,8 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList releaseVersions READ ReleaseVersions NOTIFY downloadChanged)
     Q_PROPERTY(QStringList snapshotVersions READ SnapshotVersions NOTIFY downloadChanged)
     Q_PROPERTY(QStringList aprilVersions READ AprilVersions NOTIFY downloadChanged)
+    Q_PROPERTY(double downloadProgress READ DownloadProgress NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList javaOptions READ JavaOptions NOTIFY changed)
 
 public:
     Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent = nullptr);
@@ -52,6 +54,8 @@ public:
     QStringList ReleaseVersions() const { return release_versions_; }
     QStringList SnapshotVersions() const { return snapshot_versions_; }
     QStringList AprilVersions() const { return april_versions_; }
+    double DownloadProgress() const { return download_progress_; }
+    QStringList JavaOptions() const { return java_options_; }
 
 public slots:
     Q_INVOKABLE void selectVersion(const QString& id);
@@ -63,6 +67,7 @@ public slots:
     Q_INVOKABLE void installContent(int index);
     Q_INVOKABLE void selectContentSource(int index);
     Q_INVOKABLE void installGame(int kind, int index);
+    Q_INVOKABLE void selectJava(int index);
 
 signals:
     void changed();
@@ -83,6 +88,9 @@ private:
     QString details_;
     QString java_info_;
     QStringList javas_;
+    QStringList java_options_;
+    QStringList java_paths_;
+    QString java_path_override_;
     QString loader_ = QStringLiteral("原版");
     QString status_ = QStringLiteral("空闲");
     bool busy_ = false;
@@ -97,4 +105,5 @@ private:
     QString content_kind_ = QStringLiteral("mod");
     QString download_status_ = QStringLiteral("选一个分类开始");
     bool download_busy_ = false;
+    double download_progress_ = 0.0;
 };

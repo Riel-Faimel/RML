@@ -38,12 +38,6 @@ Item {
                 anchors.margins: 14
                 spacing: 8
 
-                Text {
-                    text: qsTr("下载")
-                    font.pixelSize: 13
-                    color: Theme.textSecondary
-                }
-
                 Repeater {
                     model: [
                         { key: "version", kind: "", label: qsTr("游戏版本") },
@@ -234,6 +228,27 @@ Item {
                             color: parent.enabled ? Theme.primary : "#99FFFFFF"
                         }
                         onClicked: bridge.searchContent(searchField.text, page.kind)
+                    }
+                }
+
+                // 进度条
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    visible: bridge.downloadBusy
+                    clip: true
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 3
+                        color: "#55FFFFFF"
+                    }
+
+                    Rectangle {
+                        width: parent.width * Math.max(0, Math.min(1, bridge.downloadProgress))
+                        height: parent.height
+                        radius: 3
+                        color: Theme.primary
                     }
                 }
 

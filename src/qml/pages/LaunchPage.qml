@@ -142,12 +142,51 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 4
+                    spacing: 6
+
+                    Text {
+                        text: qsTr("Java")
+                        font.pixelSize: 12
+                        color: Theme.textSecondary
+                    }
+
+                    ComboBox {
+                        id: javaBox
+                        Layout.preferredWidth: 300
+                        Layout.preferredHeight: 36
+                        model: bridge.javaOptions
+                        currentIndex: 0
+                        onActivated: bridge.selectJava(index)
+
+                        palette.text: Theme.text
+                        palette.window: "#FFFFFF"
+                        palette.base: "#FFFFFF"
+                        palette.button: "#FFFFFF"
+                        palette.highlight: Theme.primary
+                        palette.highlightedText: "#FFFFFF"
+
+                        background: Rectangle {
+                            radius: Theme.radiusSmall
+                            color: "#88FFFFFF"
+                            border.width: 1
+                            border.color: "#55FFFFFF"
+                        }
+
+                        contentItem: Text {
+                            leftPadding: 12
+                            text: javaBox.displayText
+                            color: Theme.text
+                            font.pixelSize: 13
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+
                     Text {
                         Layout.fillWidth: true
                         text: bridge.javaInfo
-                        font.pixelSize: 13
-                        color: Theme.text
+                        font.pixelSize: 12
+                        color: Theme.textSecondary
                         wrapMode: Text.WordWrap
                     }
                 }

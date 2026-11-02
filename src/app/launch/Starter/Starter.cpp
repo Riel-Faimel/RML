@@ -179,23 +179,39 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     command.working_dir = game_dir;
 
     // —— Java ——
-    const Environment::Java* java = environment_.Pick(detail.java_major);
+    const Environment::Java* java = nullptr;
+    if (!options.java_path.empty()) java = environment_.Find(options.java_path);
+    if (java == nullptr) java = environment_.Pick(detail.java_major);
+
     if (java == nullptr) {
         missing.push_back({"没有可用的 Java", "需要 Java " + std::to_string(detail.java_major)});
         error = "没有可用的 Java";
         return false;
     }
-    if (java->major != detail.java_major) {
-        missing.push_back({"Java 版本不匹配",
-                           "需要 Java " + std::to_string(detail.java_major) + "，当前最高为 " +
+    if (java->major < detail.java_major) {
+        missing.push_back({"Java 版本过低",
+                           "需要 Java " + std::to_string(detail.java_major) + "，可用最高为 " +
                                std::to_string(java->major)});
     }
     command.java = java->path;
+
     // —— natives ——
+    // 1.19 起 LWJGL natives 直接进 classpath，不再解压；没有 natives 声明的版本不该要求这个目录
+    bool needs_natives = false;
+    for (const auto& library : detail.libraries) {
+        if (library.natives.find("windows") != library.natives.end()) {
+            needs_natives = true;
+            break;
+        }
+    }
+
     const std::string natives_dir = tools::JoinPath(version_dir, version_.Selected() + "-natives");
-    bool natives_ready = tools::IsDirectory(natives_dir) && !tools::ListFiles(natives_dir).empty();
-    if (!natives_ready) {
-        missing.push_back({"natives 未解压", natives_dir});
+    if (needs_natives) {
+        const bool ready = tools::IsDirectory(natives_dir) && !tools::ListFiles(natives_dir).empty();
+        if (!ready) missing.push_back({"natives 未解压", natives_dir});
+    } else {
+        std::string dir_error;
+        tools::EnsureDir(natives_dir, dir_error);  // 参数里还要用，先建个空目录
     }
     // —— 本次启动启用的 features：rules 靠它决定参数要不要带上 ——
     std::set<std::string> features;

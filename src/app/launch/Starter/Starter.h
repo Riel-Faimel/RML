@@ -17,6 +17,7 @@ public:
         int width = 854;
         int height = 480;
         std::string quick_play;  // host:port，空表示不直连
+        std::string java_path;   // 手动指定 Java；空表示按版本要求自动选
         std::string launcher_name = "RML";
         std::string launcher_version = "0.1";
     };

@@ -61,24 +61,24 @@ CHECK  := $(BUILD)/rml_check.exe
 all: $(TARGET)
 
 $(BUILD):
-	if not exist "$(BUILD)" mkdir "$(BUILD)"
+	@ if not exist "$(BUILD)" mkdir "$(BUILD)"
 
 $(BUILD)/moc_Bridge.cpp: src/app/Bridge.h | $(BUILD)
-	$(MOC) $< -o $@
+	@ $(MOC) $< -o $@
 
 $(BUILD)/%.o: src/%.cpp | $(BUILD)
-	if not exist "$(dir $@)" mkdir "$(dir $@)"
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@ if not exist "$(dir $@)" mkdir "$(dir $@)"
+	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(BUILD)/moc_Bridge.o: $(BUILD)/moc_Bridge.cpp | $(BUILD)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(CORE_OBJECTS) $(APP_OBJECTS)
-	$(CXX) $^ $(LDFLAGS) $(LDLIBS) -o $@
+	@ $(CXX) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
 # 装配检查：同样的模块，不开窗口
 $(CHECK): $(CORE_OBJECTS) $(BUILD)/test/main.o
-	$(CXX) $^ -L$(QT_DIR)/lib -lshell32 -lwinhttp -o $@
+	@ $(CXX) $^ -L$(QT_DIR)/lib -lshell32 -lwinhttp -o $@
 
 check: $(CHECK)
 	"$(CHECK)"
@@ -90,12 +90,12 @@ run: $(TARGET)
 DIST := dist
 
 deploy:
-	$(MAKE) CONFIG=release all
-	cmd /c tools\deploy.bat "$(CURDIR)/build/release/rml.exe" "$(QT_DIR)"
+	@ $(MAKE) CONFIG=release all
+	@ cmd /c tools\deploy.bat "$(CURDIR)/build/release/rml.exe" "$(QT_DIR)"
 
 clean:
-	if exist "build" rmdir /s /q "build"
-	if exist "$(DIST)" rmdir /s /q "$(DIST)"
+	@ if exist "build" rmdir /s /q "build"
+	@ if exist "$(DIST)" rmdir /s /q "$(DIST)"
 
 .PHONY: all run check deploy clean
 

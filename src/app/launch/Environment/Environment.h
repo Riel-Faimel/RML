@@ -20,8 +20,9 @@ public:
 
     const std::vector<Java>& Javas() const { return javas_; }
 
-    // 需求版本优先完全匹配，否则取可用的最高版本
+    // 需求版本优先完全匹配；否则取「不低于要求的最低版本」（Java 向上兼容）
     const Java* Pick(int required_major) const;
+    const Java* Find(const std::string& path) const;
 
     // RML 自己管理的 Java 根目录：%APPDATA%\RML\runtimes
     static std::string ManagedRoot();

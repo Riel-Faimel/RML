@@ -111,12 +111,35 @@ void Bridge::UpdateDetails() {
 
 void Bridge::RefreshJavas() {
     javas_.clear();
+    java_options_.clear();
+    java_paths_.clear();
+
+    java_options_ << QStringLiteral("自动（推荐）");
+
     for (const auto& java : launch_.Tools().Javas()) {
+        const bool managed = java.source == "RML";
+        const QString tag = managed ? QStringLiteral("RML 安装") : QStringLiteral("系统");
+
+        // 设置页：来源标记放尾部
         javas_ << QStringLiteral("Java %1  ·  %2  ·  %3")
                       .arg(java.major)
-                      .arg(FromStd(java.source))
-                      .arg(FromStd(java.path));
+                      .arg(FromStd(java.path))
+                      .arg(tag);
+
+        // 启动页下拉：短一点
+        java_options_ << QStringLiteral("Java %1  ·  %2").arg(java.major).arg(tag);
+        java_paths_ << FromStd(java.path);
     }
+}
+
+void Bridge::selectJava(int index) {
+    if (index <= 0 || index > java_paths_.size()) {
+        java_path_override_.clear();
+    } else {
+        java_path_override_ = java_paths_.at(index - 1);
+    }
+    UpdateDetails();
+    emit changed();
 }
 
 void Bridge::installJava(int major) {
@@ -156,6 +179,7 @@ void Bridge::launchGame() {
 
     launch::Starter::Options options;
     options.memory_mb = memory_mb_;
+    options.java_path = java_path_override_.toStdString();
     launch::Starter::Command command;
     std::vector<launch::Starter::Missing> missing;
     std::string error;
@@ -355,12 +379,17 @@ void Bridge::installGame(int kind, int index) {
         auto& installer = launch_.Downloader().Installers();
         download::installer::Transfer::Result result;
         auto progress = [this, id](const std::string& label, int done, int total) {
-            if (done != total && done % 32 != 0) return;
+            if (done != total && done % 16 != 0) return;
+            const double fraction = total > 0 ? static_cast<double>(done) / total : 0.0;
             QMetaObject::invokeMethod(
                 this,
-                [this, id, label, done, total] {
-                    download_status_ =
-                        QStringLiteral("%1  %2/%3  %4").arg(FromStd(id)).arg(done).arg(total).arg(FromStd(label));
+                [this, id, label, done, total, fraction] {
+                    download_progress_ = fraction;
+                    download_status_ = QStringLiteral("%1  %2/%3  %4")
+                                           .arg(FromStd(id))
+                                           .arg(done)
+                                           .arg(total)
+                                           .arg(FromStd(label));
                     emit downloadChanged();
                 },
                 Qt::QueuedConnection);
@@ -444,6 +473,7 @@ void Bridge::installContent(int index) {
     const std::string instance_dir = launch_.Versions().GameDir();
 
     download_busy_ = true;
+    download_progress_ = 0.0;
     download_status_ = QStringLiteral("正在解析版本…");
     emit downloadChanged();
 

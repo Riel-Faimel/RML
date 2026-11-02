@@ -26,18 +26,10 @@ Item {
                 color: Theme.text
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("RML 只读取系统里已装好的 Java；自己安装的放在 %APPDATA%\\RML\\runtimes，不会改动系统环境。")
-                font.pixelSize: 13
-                color: Theme.textSecondary
-                wrapMode: Text.WordWrap
-            }
-
             ListView {
                 id: javaList
                 Layout.fillWidth: true
-                Layout.preferredHeight: 190
+                Layout.fillHeight: true
                 clip: true
                 spacing: 6
                 model: bridge.javas
@@ -120,7 +112,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Item { Layout.fillHeight: true }
+
         }
     }
 }
