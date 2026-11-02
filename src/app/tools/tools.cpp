@@ -400,6 +400,7 @@ struct RmlTimespec {
     long tv_nsec;
 };
 
+[[used]]
 int clock_gettime64(int clock_id, RmlTimespec* ts) {
     if (ts == nullptr) return -1;
 
@@ -429,6 +430,7 @@ int clock_gettime64(int clock_id, RmlTimespec* ts) {
     return -1;
 }
 
+[[used]]
 int nanosleep64(const RmlTimespec* request, RmlTimespec* remaining) {
     if (request == nullptr) return -1;
     if (remaining != nullptr) {
