@@ -10,6 +10,7 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <cctype>
 #include <filesystem>
 #include <thread>
 
@@ -40,6 +41,30 @@ QString LoaderFromMainClass(const std::string& main_class) {
     // 1.16~1.20 的 Forge/NeoForge 都从 modlauncher 启动；没有 rml.json 的外部版本靠这个兜底
     if (main_class.find("modlauncher") != std::string::npos) return QStringLiteral("Forge");
     return QStringLiteral("原版");
+}
+
+std::string ContentLoaderId(const std::string& loader, const std::string& id) {
+    std::string value = loader;
+    if (value.empty()) {
+        if (id.find("-neoforge-") != std::string::npos) return "neoforge";
+        if (id.find("-forge-") != std::string::npos) return "forge";
+        if (id.find("-fabric-") != std::string::npos) return "fabric";
+        if (id.find("-quilt-") != std::string::npos) return "quilt";
+        return {};
+    }
+    for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (value == "forge") return "forge";
+    if (value == "neoforge") return "neoforge";
+    if (value == "fabric") return "fabric";
+    if (value == "quilt") return "quilt";
+    return {};
+}
+
+bool ContainsValue(const std::vector<std::string>& values, const std::string& wanted) {
+    for (const auto& value : values) {
+        if (value == wanted) return true;
+    }
+    return false;
 }
 
 QString SourceKindLabel(const std::string& kind) {
@@ -731,6 +756,24 @@ std::string Bridge::versionIdAt(int index) const {
     return version_ids_.at(index).toStdString();
 }
 
+const Directory::VersionEntry* Bridge::SelectedEntry() const {
+    for (const auto& entry : launch_.Versions().Entries()) {
+        if (entry.id == selected_.toStdString()) return &entry;
+    }
+    return nullptr;
+}
+
+std::string Bridge::SelectedMinecraftVersion() const {
+    const Directory::VersionEntry* entry = SelectedEntry();
+    return entry == nullptr ? std::string() : entry->minecraft_version;
+}
+
+std::string Bridge::SelectedContentLoader() const {
+    const Directory::VersionEntry* entry = SelectedEntry();
+    if (entry == nullptr) return {};
+    return ContentLoaderId(entry->loader, entry->id);
+}
+
 void Bridge::selectVersionAt(int index) {
     const std::string id = versionIdAt(index);
     if (id.empty() || !launch_.Versions().Select(id)) return;
@@ -800,6 +843,20 @@ void Bridge::RefreshVersionList() {
 
 void Bridge::searchContent(const QString& query, const QString& kind) {
     if (download_busy_) return;
+
+    const std::string mc_version = SelectedMinecraftVersion();
+    const std::string loader = SelectedContentLoader();
+    if (mc_version.empty()) {
+        download_status_ = QStringLiteral("先选择一个游戏版本，再搜索内容");
+        emit downloadChanged();
+        return;
+    }
+    if (kind == QStringLiteral("mod") && loader.empty()) {
+        download_status_ = QStringLiteral("当前版本没有 Mod 加载器，不能安装 Mod");
+        emit downloadChanged();
+        return;
+    }
+
     content_kind_ = kind;
     download_busy_ = true;
     download_failed_ = false;
@@ -807,11 +864,10 @@ void Bridge::searchContent(const QString& query, const QString& kind) {
     emit downloadChanged();
 
     const std::string text = query.toStdString();
-    std::thread([this, text] {
+    std::thread([this, text, loader, mc_version] {
         std::vector<ContentSource::Project> projects;
         std::string error;
-        const bool ok =
-            selectedSource()->Search(text, "", "", projects, error);
+        bool ok = selectedSource()->Search(text, loader, mc_version, projects, error);
 
         QStringList titles;
         QStringList ids;
@@ -829,6 +885,7 @@ void Bridge::searchContent(const QString& query, const QString& kind) {
                 download_status_ = ok ? QStringLiteral("找到 %1 个结果").arg(titles.size())
                                       : QStringLiteral("搜索失败：%1").arg(FromStd(error));
                 download_busy_ = false;
+                download_failed_ = !ok;
                 emit downloadChanged();
             },
             Qt::QueuedConnection);
@@ -841,20 +898,32 @@ void Bridge::installContent(int index) {
     const std::string project_id = content_ids_.at(index).toStdString();
     const std::string kind = content_kind_.toStdString();
     const std::string instance_dir = launch_.Versions().GameDir();
+    const std::string mc_version = SelectedMinecraftVersion();
+    const std::string loader = SelectedContentLoader();
+    if (mc_version.empty()) {
+        download_status_ = QStringLiteral("先选择一个游戏版本，再安装内容");
+        emit downloadChanged();
+        return;
+    }
+    if (kind == "mod" && loader.empty()) {
+        download_status_ = QStringLiteral("当前版本没有 Mod 加载器，不能安装 Mod");
+        emit downloadChanged();
+        return;
+    }
 
     download_busy_ = true;
     download_failed_ = false;
     download_progress_ = 0.0;
     launch_.Downloader().Installers().Transfers().ResetCancel();
-    download_status_ = QStringLiteral("正在解析版本…");
+    download_status_ = QStringLiteral("正在查找适配 %1 的版本…").arg(FromStd(mc_version));
     emit downloadChanged();
 
-    std::thread([this, project_id, kind, instance_dir] {
+    std::thread([this, project_id, kind, instance_dir, loader, mc_version] {
         std::vector<ContentSource::Version> versions;
         std::string error;
         auto& installer = launch_.Downloader().Installers();
 
-        if (!selectedSource()->Versions(project_id, "", "", versions, error)) {
+        if (!selectedSource()->Versions(project_id, loader, mc_version, versions, error)) {
             QMetaObject::invokeMethod(
                 this,
                 [this, error] {
@@ -866,11 +935,32 @@ void Bridge::installContent(int index) {
                 Qt::QueuedConnection);
             return;
         }
-        if (versions.empty() || versions.front().files.empty()) {
+
+        const ContentSource::Version* chosen = nullptr;
+        for (const auto& version : versions) {
+            if (version.files.empty()) continue;
+            if (!version.game_versions.empty() &&
+                !ContainsValue(version.game_versions, mc_version)) {
+                continue;
+            }
+            if (kind == "mod" && !version.loaders.empty() &&
+                !ContainsValue(version.loaders, loader)) {
+                continue;
+            }
+            chosen = &version;
+            break;
+        }
+
+        if (chosen == nullptr) {
+            const QString reason = kind == "mod" && !loader.empty()
+                                       ? QStringLiteral("没有适配 %1（%2）的版本")
+                                             .arg(FromStd(mc_version))
+                                             .arg(FromStd(loader))
+                                       : QStringLiteral("没有适配 %1 的版本").arg(FromStd(mc_version));
             QMetaObject::invokeMethod(
                 this,
-                [this] {
-                    download_status_ = QStringLiteral("这个项目没有可下载文件");
+                [this, reason] {
+                    download_status_ = reason;
                     download_busy_ = false;
                     download_failed_ = true;
                     emit downloadChanged();
@@ -879,7 +969,7 @@ void Bridge::installContent(int index) {
             return;
         }
 
-        const auto& file = versions.front().files.front();
+        const auto& file = chosen->files.front();
         download::installer::Placement::Kind placement_kind = download::installer::Placement::Kind::Mod;
         if (kind == "shader") placement_kind = download::installer::Placement::Kind::Shaderpack;
         if (kind == "resourcepack") placement_kind = download::installer::Placement::Kind::Resourcepack;
@@ -887,7 +977,8 @@ void Bridge::installContent(int index) {
         download::installer::Transfer::Task task;
         task.url = file.url;
         task.sha1 = file.sha1;
-        task.dest = download::installer::Placement::Resolve(instance_dir, placement_kind, file.filename, false);
+        task.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
+                                                            file.filename, true);
         task.label = file.filename;
         task.size = file.size;
 

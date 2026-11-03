@@ -100,6 +100,8 @@ void Directory::RefreshVersions() {
         Json::Value version_root;
         if (!ReadJsonFile(VersionJson(id), version_root)) continue;
         if (version_root["id"].AsString().empty()) continue;
+        version.minecraft_version = version_root["inheritsFrom"].AsString();
+        if (version.minecraft_version.empty()) version.minecraft_version = id;
 
         version.has_jar = std::filesystem::is_regular_file(ToPath(VersionJar(id)));
 

@@ -130,6 +130,9 @@ private:
     void SaveSources();
     std::string versionIdAt(int index) const;
     ContentSource* selectedSource();
+    const Directory::VersionEntry* SelectedEntry() const;
+    std::string SelectedMinecraftVersion() const;
+    std::string SelectedContentLoader() const;
 
     Launch& launch_;
     QString account_name_;

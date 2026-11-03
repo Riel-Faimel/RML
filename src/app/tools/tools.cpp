@@ -4,6 +4,7 @@
 #include <cctype>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <thread>
 #include <fstream>
@@ -228,6 +229,13 @@ bool FetchToFile(const std::string& url, const std::string& path,
         if (status < 200 || status >= 300) {
             error = "http_status_" + std::to_string(status);
         } else {
+            DWORD expected = 0;
+            DWORD header_size = sizeof(expected);
+            WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                                WINHTTP_HEADER_NAME_BY_INDEX, &expected, &header_size,
+                                WINHTTP_NO_HEADER_INDEX);
+
+            uint64_t written = 0;
             std::ofstream stream(tools::ToPath(path), std::ios::binary | std::ios::trunc);
             std::vector<char> buffer(64 * 1024);
             if (!stream) {
@@ -236,19 +244,39 @@ bool FetchToFile(const std::string& url, const std::string& path,
                 ok = true;
                 while (true) {
                     DWORD available = 0;
-                    if (!WinHttpQueryDataAvailable(request, &available) || available == 0) break;
+                    // QueryDataAvailable 失败不能当 EOF，否则会留下截断文件
+                    if (!WinHttpQueryDataAvailable(request, &available)) {
+                        error = "read_failed";
+                        ok = false;
+                        break;
+                    }
+                    if (available == 0) break;
                     DWORD to_read =
                         available > buffer.size() ? static_cast<DWORD>(buffer.size()) : available;
                     DWORD read = 0;
                     if (!WinHttpReadData(request, buffer.data(), to_read, &read) || read == 0) {
+                        error = "read_failed";
                         ok = false;
                         break;
                     }
                     stream.write(buffer.data(), read);
+                    written += read;
                     if (!stream) {
+                        error = "write_failed";
                         ok = false;
                         break;
                     }
+                }
+                if (ok) {
+                    stream.flush();
+                    if (!stream) {
+                        error = "write_failed";
+                        ok = false;
+                    }
+                }
+                if (ok && expected > 0 && written != expected) {
+                    error = "download_incomplete";
+                    ok = false;
                 }
             }
         }
@@ -278,7 +306,11 @@ bool DownloadFile(const std::string& url, const std::string& path, std::string& 
 bool HttpGet(const std::string& url, const std::vector<std::string>& headers, std::string& out,
              std::string& error) {
     const std::string temp = TempBodyPath();
-    if (!FetchToFile(url, temp, &headers, error)) return false;
+    if (!FetchToFile(url, temp, &headers, error)) {
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(temp), ignored);
+        return false;
+    }
     out = ReadTextFile(temp);
     std::error_code ec;
     std::filesystem::remove(tools::ToPath(temp), ec);

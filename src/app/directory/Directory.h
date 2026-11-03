@@ -17,6 +17,7 @@ public:
         bool managed = false;
         bool complete = true;
         std::string loader;
+        std::string minecraft_version;  // 继承链里的原版版本，内容筛选用
         bool is_server = false;
         bool user_installed = false;
         bool dependency = false;  // Forge/NeoForge 的原版底座，不对外显示

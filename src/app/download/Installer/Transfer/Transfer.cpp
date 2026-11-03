@@ -1,9 +1,12 @@
 #include "app/download/Installer/Transfer/Transfer.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 
@@ -11,6 +14,31 @@
 
 namespace download {
 namespace installer {
+
+namespace {
+
+bool EndsWithJar(const std::string& path) {
+    if (path.size() < 4) return false;
+    std::string suffix = path.substr(path.size() - 4);
+    for (char& c : suffix) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return suffix == ".jar";
+}
+
+// 没有 sha1 的库（Fabric loader/intermediary）只能靠 ZIP 结构判断是不是下坏了
+bool IsCompleteZip(const std::string& path) {
+    std::ifstream stream(tools::ToPath(path), std::ios::binary);
+    if (!stream) return false;
+    stream.seekg(0, std::ios::end);
+    const std::streamoff size = stream.tellg();
+    if (size < 22) return false;
+    const std::streamoff window = size > 65557 ? 65557 : size;
+    stream.seekg(size - window, std::ios::beg);
+    std::string tail(static_cast<size_t>(window), '\0');
+    stream.read(tail.data(), static_cast<std::streamsize>(tail.size()));
+    return tail.find("PK\x05\x06") != std::string::npos;
+}
+
+}  // namespace
 
 bool Transfer::Verify(const std::string& path, const std::string& sha1) {
     if (!tools::PathExists(path)) return false;
@@ -63,7 +91,17 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
             if (index >= pending.size()) return;
 
             const Task& task = pending[index];
-            if (Verify(task.dest, task.sha1)) {
+            bool valid = Verify(task.dest, task.sha1);
+            if (valid && task.size > 0) {
+                std::error_code size_error;
+                const auto size = std::filesystem::file_size(tools::ToPath(task.dest), size_error);
+                if (size_error || static_cast<int64_t>(size) != task.size) valid = false;
+            }
+            if (valid && task.sha1.empty() && EndsWithJar(task.dest)) {
+                valid = IsCompleteZip(task.dest);
+            }
+
+            if (valid) {
                 ++skipped;
             } else {
                 std::string local_error;
@@ -104,6 +142,11 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                         if (cancelled()) {
                             local_error = "已取消";
                             break;
+                        }
+                        if (task.sha1.empty() && EndsWithJar(task.dest) && !IsCompleteZip(part)) {
+                            local_error = "文件不完整";
+                            tools::SleepMs(300);
+                            continue;
                         }
 
                         std::error_code ec;

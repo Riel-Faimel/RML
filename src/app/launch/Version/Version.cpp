@@ -149,17 +149,17 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         library.size = item["downloads"]["artifact"]["size"].AsInt(0);
         library.rules = item["rules"];
 
-        // 老版本（1.13 以前）的库：url 是仓库根，路径要从 maven 名字推；
-        // 连 url 都没有的（launchwrapper、guava 这种）默认走 libraries.minecraft.net
-        if (library.path.empty() && library.url.empty() && !library.name.empty() &&
-            !item["natives"].IsObject()) {
+        // 老格式和 Fabric meta：没有 downloads.artifact，路径要从 maven 名字推；
+        // item["url"] 此时是仓库根（Fabric 的 https://maven.fabricmc.net/），要拼上相对路径。
+        if (library.path.empty() && !library.name.empty() && !item["natives"].IsObject()) {
             library.path = tools::MavenToPath(library.name);
-            std::string base = item["url"].AsString();
-            if (base.empty()) base = "https://libraries.minecraft.net/";
-            if (!library.path.empty()) {
-                library.url = base;
-                if (library.url.back() != '/') library.url += "/";
-                library.url += library.path;
+            if (!library.path.empty() && item["url"].IsString() &&
+                !item["url"].AsString().empty()) {
+                std::string base = item["url"].AsString();
+                if (!base.empty() && base.back() != '/') base += "/";
+                library.url = base + library.path;
+            } else if (library.url.empty() && !library.path.empty()) {
+                library.url = "https://libraries.minecraft.net/" + library.path;
             }
         }
 

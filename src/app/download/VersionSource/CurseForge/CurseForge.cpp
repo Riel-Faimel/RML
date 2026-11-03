@@ -30,6 +30,14 @@ std::string UrlEncodeShim(const std::string& text) {
     return out;
 }
 
+std::string LoaderType(const std::string& loader) {
+    if (loader == "forge") return "1";
+    if (loader == "fabric") return "4";
+    if (loader == "quilt") return "5";
+    if (loader == "neoforge") return "6";
+    return {};
+}
+
 std::vector<std::string> AuthHeaders(const std::string& key) {
     return {"x-api-key: " + key, "Accept: application/json"};
 }
@@ -65,7 +73,9 @@ bool CurseForge::Search(const std::string& query, const std::string& loader,
     std::string url = std::string(kApiBase) + "/mods/search?gameId=" + std::to_string(kGameMinecraft) +
                       "&classId=" + std::to_string(kClassMods) + "&pageSize=20&searchFilter=" +
                       UrlEncodeShim(query);
-    if (!loader.empty()) url += "&modLoaderType=" + UrlEncodeShim(loader);
+    if (!mc_version.empty()) url += "&gameVersion=" + UrlEncodeShim(mc_version);
+    const std::string loader_type = LoaderType(loader);
+    if (!loader_type.empty()) url += "&modLoaderType=" + loader_type;
 
     std::string text;
     const std::string cache_key = "curseforge:search:" + url;
@@ -108,8 +118,11 @@ bool CurseForge::Versions(const std::string& project_id, const std::string& load
         return false;
     }
 
-    const std::string url =
+    std::string url =
         std::string(kApiBase) + "/mods/" + project_id + "/files?pageSize=20";
+    if (!mc_version.empty()) url += "&gameVersion=" + UrlEncodeShim(mc_version);
+    const std::string loader_type = LoaderType(loader);
+    if (!loader_type.empty()) url += "&modLoaderType=" + loader_type;
 
     std::string text;
     const std::string cache_key = "curseforge:files:" + url;
@@ -138,7 +151,18 @@ bool CurseForge::Versions(const std::string& project_id, const std::string& load
 
         const Json::Value& game_versions = item["gameVersions"];
         for (size_t k = 0; k < game_versions.Size(); ++k) {
-            version.game_versions.push_back(game_versions.At(k).AsString());
+            const std::string value = game_versions.At(k).AsString();
+            if (value == "Forge") {
+                version.loaders.push_back("forge");
+            } else if (value == "Fabric") {
+                version.loaders.push_back("fabric");
+            } else if (value == "Quilt") {
+                version.loaders.push_back("quilt");
+            } else if (value == "NeoForge") {
+                version.loaders.push_back("neoforge");
+            } else {
+                version.game_versions.push_back(value);
+            }
         }
 
         File file;
@@ -154,8 +178,6 @@ bool CurseForge::Versions(const std::string& project_id, const std::string& load
         if (!file.url.empty()) version.files.push_back(file);
         if (!version.id.empty()) out.push_back(std::move(version));
     }
-    (void)loader;
-    (void)mc_version;
     return true;
 }
 
