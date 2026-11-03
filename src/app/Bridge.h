@@ -1,6 +1,8 @@
 // 应用层：把启动模块暴露给 QML。不属于任何模块。
 #pragma once
 
+#include <atomic>
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -36,6 +38,11 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList snapshotVersions READ SnapshotVersions NOTIFY downloadChanged)
     Q_PROPERTY(QStringList aprilVersions READ AprilVersions NOTIFY downloadChanged)
     Q_PROPERTY(double downloadProgress READ DownloadProgress NOTIFY downloadChanged)
+    Q_PROPERTY(bool downloadFailed READ DownloadFailed NOTIFY downloadChanged)
+    Q_PROPERTY(bool launchRepairing READ LaunchRepairing NOTIFY changed)
+    Q_PROPERTY(bool launchCancelling READ LaunchCancelling NOTIFY changed)
+    Q_PROPERTY(double launchProgress READ LaunchProgress NOTIFY changed)
+    Q_PROPERTY(bool launchFailed READ LaunchFailed NOTIFY changed)
     Q_PROPERTY(QStringList javaOptions READ JavaOptions NOTIFY changed)
     Q_PROPERTY(int selectedIndex READ SelectedIndex NOTIFY changed)
     Q_PROPERTY(QString installingVersion READ InstallingVersion NOTIFY changed)
@@ -69,6 +76,11 @@ public:
     QStringList SnapshotVersions() const { return snapshot_versions_; }
     QStringList AprilVersions() const { return april_versions_; }
     double DownloadProgress() const { return download_progress_; }
+    bool DownloadFailed() const { return download_failed_; }
+    bool LaunchRepairing() const { return repairing_; }
+    bool LaunchCancelling() const { return cancelling_; }
+    double LaunchProgress() const { return repair_progress_; }
+    bool LaunchFailed() const { return repair_failed_; }
     QStringList JavaOptions() const { return java_options_; }
     int SelectedIndex() const { return selected_index_; }
     QString InstallingVersion() const { return installing_version_; }
@@ -84,6 +96,7 @@ public slots:
     Q_INVOKABLE void selectVersion(const QString& id);
     Q_INVOKABLE void applyLaunchOptions(int memory_mb, const QString& gc, const QString& jvm_args);
     Q_INVOKABLE void launchGame();
+    Q_INVOKABLE void cancelLaunchRepair();
     Q_INVOKABLE void installJava(int major);
     Q_INVOKABLE void loadGameVersions();
     Q_INVOKABLE void searchContent(const QString& query, const QString& kind);
@@ -149,4 +162,11 @@ private:
     QString download_status_ = QStringLiteral("选一个分类开始");
     bool download_busy_ = false;
     double download_progress_ = 0.0;
+    bool download_failed_ = false;
+
+    bool repairing_ = false;
+    bool cancelling_ = false;
+    double repair_progress_ = 0.0;
+    bool repair_failed_ = false;
+    std::atomic<bool> cancel_requested_{false};
 };

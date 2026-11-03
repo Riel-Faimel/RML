@@ -358,6 +358,11 @@ void Bridge::installJava(int major) {
 void Bridge::launchGame() {
     if (busy_) return;
 
+    repair_failed_ = false;
+    repairing_ = false;
+    cancelling_ = false;
+    cancel_requested_ = false;
+
     AccountProvider::Credentials credentials;
     credentials.username = account_name_.toStdString();
     credentials.uuid = "00000000-0000-0000-0000-000000000000";
@@ -379,10 +384,17 @@ void Bridge::launchGame() {
             QStringList lines;
             lines << QStringLiteral("无法启动：%1").arg(FromStd(error));
             status_ = lines.join('\n');
+            repair_failed_ = true;
             emit changed();
             return;
         }
 
+        auto& transfers = launch_.Downloader().Installers().Transfers();
+        transfers.ResetCancel();
+        repair_progress_ = 0.0;
+        repairing_ = true;
+        cancelling_ = false;
+        cancel_requested_ = false;
         busy_ = true;
         status_ = QStringLiteral("发现 %1 项文件缺失，正在自动补齐…").arg(missing.size());
         emit changed();
@@ -392,9 +404,11 @@ void Bridge::launchGame() {
             std::string repair_error;
             auto progress = [this](const std::string& label, int done, int total) {
                 if (done != total && done % 32 != 0) return;
+                const double fraction = total > 0 ? static_cast<double>(done) / total : 0.0;
                 QMetaObject::invokeMethod(
                     this,
-                    [this, label, done, total] {
+                    [this, label, done, total, fraction] {
+                        repair_progress_ = fraction;
                         status_ = QStringLiteral("自动补齐 %1/%2  %3")
                                       .arg(done)
                                       .arg(total)
@@ -408,23 +422,35 @@ void Bridge::launchGame() {
             const bool repaired = installer.Versions().Install(installer.Transfers(), progress,
                                                                report, repair_error);
 
+            const bool was_cancelled = cancel_requested_.load();
             launch::Starter::Command retry_command;
             std::vector<launch::Starter::Missing> retry_missing;
             std::string retry_error;
-            const bool built = repaired && launch_.GameStarter().Build(
-                                                credentials, options, retry_command, retry_missing,
-                                                retry_error);
+            const bool built =
+                repaired && !was_cancelled &&
+                launch_.GameStarter().Build(credentials, options, retry_command, retry_missing,
+                                            retry_error);
 
             bool started = false;
-            if (built) started = launch_.GameStarter().Start(retry_command, retry_error);
+            if (built && !cancel_requested_.load()) {
+                started = launch_.GameStarter().Start(retry_command, retry_error);
+            }
 
             QMetaObject::invokeMethod(
                 this,
                 [this, repaired, built, started, report, repair_error, retry_error, retry_missing] {
                     busy_ = false;
-                    if (!repaired) {
+                    repairing_ = false;
+                    cancelling_ = false;
+                    if (cancel_requested_.load()) {
+                        repair_failed_ = false;
+                        repair_progress_ = 0.0;
+                        status_ = QStringLiteral("已取消自动补齐");
+                    } else if (!repaired) {
+                        repair_failed_ = true;
                         status_ = QStringLiteral("自动补齐失败：%1").arg(FromStd(repair_error));
                     } else if (!built) {
+                        repair_failed_ = true;
                         QStringList lines;
                         lines << QStringLiteral("补齐后仍无法启动：%1").arg(FromStd(retry_error));
                         for (const auto& item : retry_missing) {
@@ -432,9 +458,12 @@ void Bridge::launchGame() {
                         }
                         status_ = lines.join('\n');
                     } else if (!started) {
+                        repair_failed_ = true;
                         status_ = QStringLiteral("启动失败：%1").arg(FromStd(retry_error));
                     } else {
                         busy_ = true;
+                        repair_failed_ = false;
+                        repair_progress_ = 1.0;
                         status_ = QStringLiteral("已自动补齐 %1 项，游戏已启动").arg(report.downloaded);
                     }
                     emit changed();
@@ -445,12 +474,25 @@ void Bridge::launchGame() {
     }
     if (!launch_.GameStarter().Start(command, error)) {
         status_ = QStringLiteral("启动失败：%1").arg(FromStd(error));
+        repair_failed_ = true;
+        repairing_ = false;
         emit changed();
         return;
     }
 
     busy_ = true;
+    repair_failed_ = false;
+    repairing_ = false;
     status_ = QStringLiteral("游戏已启动");
+    emit changed();
+}
+
+void Bridge::cancelLaunchRepair() {
+    if (!repairing_ || cancelling_) return;
+    cancelling_ = true;
+    cancel_requested_ = true;
+    launch_.Downloader().Installers().Transfers().Cancel();
+    status_ = QStringLiteral("正在取消自动补齐…");
     emit changed();
 }
 
@@ -470,6 +512,8 @@ void Bridge::selectContentSource(int index) {
 void Bridge::loadGameVersions() {
     if (download_busy_) return;
     download_busy_ = true;
+    download_failed_ = false;
+    download_progress_ = 0.0;
     download_status_ = QStringLiteral("正在获取版本清单…");
     emit downloadChanged();
 
@@ -515,6 +559,8 @@ void Bridge::loadGameVersions() {
                              .arg(april.size())
                        : QStringLiteral("获取失败：%1").arg(FromStd(error));
                 download_busy_ = false;
+                download_failed_ = !ok;
+                download_progress_ = ok ? 1.0 : 0.0;
                 emit downloadChanged();
             },
             Qt::QueuedConnection);
@@ -541,8 +587,10 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
     }
 
     download_busy_ = true;
+    download_failed_ = false;
     download_progress_ = 0.0;
     installing_version_ = FromStd(mc_version);
+    launch_.Downloader().Installers().Transfers().ResetCancel();
     download_status_ = QStringLiteral("正在安装 %1（%2）…").arg(FromStd(mc_version)).arg(loader);
     emit downloadChanged();
 
@@ -580,8 +628,9 @@ void Bridge::installGame(int kind, int index, const QString& loader) {
             [this, ok, outcome, error, loader_name] {
                 installing_version_.clear();
                 download_busy_ = false;
+                download_failed_ = !ok;
                 RefreshVersionList();
-                download_progress_ = ok ? 1.0 : 0.0;
+                if (ok) download_progress_ = 1.0;
                 if (ok) {
                     launch_.Versions().Select(outcome.version_id);
                     const int row = version_ids_.indexOf(FromStd(outcome.version_id));
@@ -624,7 +673,9 @@ void Bridge::installServer(int kind, int index, const QString& loader) {
     }
 
     download_busy_ = true;
+    download_failed_ = false;
     download_progress_ = 0.0;
+    launch_.Downloader().Installers().Transfers().ResetCancel();
     download_status_ = QStringLiteral("正在下载 %1 服务端（%2）…")
                            .arg(FromStd(mc_version))
                            .arg(loader);
@@ -660,7 +711,8 @@ void Bridge::installServer(int kind, int index, const QString& loader) {
             this,
             [this, ok, version_id, error] {
                 download_busy_ = false;
-                download_progress_ = ok ? 1.0 : 0.0;
+                download_failed_ = !ok;
+                if (ok) download_progress_ = 1.0;
                 download_status_ = ok ? QStringLiteral("服务端已下载：%1").arg(FromStd(version_id))
                                       : QStringLiteral("服务端下载失败：%1").arg(FromStd(error));
                 emit downloadChanged();
@@ -731,6 +783,8 @@ void Bridge::RefreshVersionList() {
     for (const auto& entry : launch_.Versions().Entries()) {
         // 服务端安装不参与启动页
         if (entry.is_server) continue;
+        // 安装中途失败的托管版本不进入启动页，避免点进去直接退出码 1
+        if (entry.managed && !entry.complete) continue;
         versions_ << FromStd(entry.name);
         version_ids_ << FromStd(entry.id);
     }
@@ -743,6 +797,7 @@ void Bridge::searchContent(const QString& query, const QString& kind) {
     if (download_busy_) return;
     content_kind_ = kind;
     download_busy_ = true;
+    download_failed_ = false;
     download_status_ = QStringLiteral("正在搜索…");
     emit downloadChanged();
 
@@ -783,7 +838,9 @@ void Bridge::installContent(int index) {
     const std::string instance_dir = launch_.Versions().GameDir();
 
     download_busy_ = true;
+    download_failed_ = false;
     download_progress_ = 0.0;
+    launch_.Downloader().Installers().Transfers().ResetCancel();
     download_status_ = QStringLiteral("正在解析版本…");
     emit downloadChanged();
 
@@ -798,6 +855,7 @@ void Bridge::installContent(int index) {
                 [this, error] {
                     download_status_ = QStringLiteral("解析失败：%1").arg(FromStd(error));
                     download_busy_ = false;
+                    download_failed_ = true;
                     emit downloadChanged();
                 },
                 Qt::QueuedConnection);
@@ -809,6 +867,7 @@ void Bridge::installContent(int index) {
                 [this] {
                     download_status_ = QStringLiteral("这个项目没有可下载文件");
                     download_busy_ = false;
+                    download_failed_ = true;
                     emit downloadChanged();
                 },
                 Qt::QueuedConnection);
@@ -836,6 +895,8 @@ void Bridge::installContent(int index) {
                 download_status_ = ok ? QStringLiteral("已安装 %1").arg(FromStd(file.filename))
                                       : QStringLiteral("安装失败：%1").arg(FromStd(error));
                 download_busy_ = false;
+                download_failed_ = !ok;
+                if (ok) download_progress_ = 1.0;
                 emit downloadChanged();
             },
             Qt::QueuedConnection);

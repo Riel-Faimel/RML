@@ -68,18 +68,9 @@ bool PickJava(const Context& context, const std::string& mc_version, std::string
 }
 
 // 版本 json 里 url 为空的库：从安装器的 maven/ 目录取；取不到的先放过（处理器可能生成）
-bool ExtractEmbeddedLibraries(const std::string& installer_jar, const std::string& libraries_root,
-                              const std::string& version_json, const std::string& work_dir,
-                              std::string& error) {
-    Json::Value root;
-    Json json;
-    std::string parse_error;
-    if (!json.Parse(version_json, root, parse_error)) {
-        error = "版本描述解析失败: " + parse_error;
-        return false;
-    }
-
-    const Json::Value& libraries = root["libraries"];
+bool ExtractEmbeddedLibraryList(const std::string& installer_jar, const std::string& libraries_root,
+                                const Json::Value& libraries, const std::string& work_dir,
+                                std::string& error) {
     for (size_t i = 0; i < libraries.Size(); ++i) {
         const Json::Value& artifact = libraries.At(i)["downloads"]["artifact"];
         const std::string path = artifact["path"].AsString();
@@ -96,6 +87,20 @@ bool ExtractEmbeddedLibraries(const std::string& installer_jar, const std::strin
         }
     }
     return true;
+}
+
+bool ExtractEmbeddedLibraries(const std::string& installer_jar, const std::string& libraries_root,
+                              const std::string& version_json, const std::string& work_dir,
+                              std::string& error) {
+    Json::Value root;
+    Json json;
+    std::string parse_error;
+    if (!json.Parse(version_json, root, parse_error)) {
+        error = "版本描述解析失败: " + parse_error;
+        return false;
+    }
+    return ExtractEmbeddedLibraryList(installer_jar, libraries_root, root["libraries"], work_dir,
+                                      error);
 }
 
 bool VerifyEmptyUrlLibraries(const std::string& libraries_root, const std::string& version_json,
@@ -239,6 +244,11 @@ bool Profile::Install(const Context& context, const Request& request, const std:
         }
     } else if (!ExtractEmbeddedLibraries(installer_path, libraries_root, version_json,
                                          tools::JoinPath(temp_root, "maven"), error)) {
+        return false;
+    } else if (!ExtractEmbeddedLibraryList(installer_path, libraries_root, profile["libraries"],
+                                           tools::JoinPath(temp_root, "maven"), error)) {
+        // Forge 1.16.5 的 universal jar 只出现在 install_profile.libraries 里，
+        // 版本 json 只引用无 classifier 的 shim；FML 启动时会去找 -universal.jar。
         return false;
     }
 

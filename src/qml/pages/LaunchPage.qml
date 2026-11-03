@@ -399,12 +399,41 @@ Item {
                     anchors.fill: parent
                     spacing: 10
 
-                    Text {
+                    Item {
                         Layout.fillWidth: true
-                        text: bridge.status
-                        font.pixelSize: 12
-                        color: Theme.textSecondary
-                        elide: Text.ElideRight
+                        Layout.fillHeight: true
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.topMargin: 8
+                            anchors.bottomMargin: 8
+                            spacing: 5
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: bridge.status
+                                font.pixelSize: 12
+                                color: Theme.textSecondary
+                                elide: Text.ElideRight
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 6
+                                radius: 3
+                                color: Theme.border
+                                visible: bridge.launchRepairing || bridge.launchFailed
+
+                                Rectangle {
+                                    width: bridge.launchFailed
+                                           ? parent.width
+                                           : parent.width * Math.max(0, Math.min(1, bridge.launchProgress))
+                                    height: parent.height
+                                    radius: 3
+                                    color: bridge.launchFailed ? Theme.danger : Theme.primary
+                                }
+                            }
+                        }
                     }
 
                     Button {
@@ -432,9 +461,14 @@ Item {
                     }
 
                     Button {
-                        text: bridge.installingVersion.length > 0 ? qsTr("安装中…")
-                              : (bridge.busy ? qsTr("运行中") : qsTr("启动"))
-                        enabled: !bridge.busy && bridge.installingVersion.length === 0 && bridge.selectedIndex >= 0
+                        text: bridge.launchRepairing
+                              ? (bridge.launchCancelling ? qsTr("取消中…") : qsTr("取消"))
+                              : (bridge.installingVersion.length > 0 ? qsTr("安装中…")
+                                 : (bridge.busy ? qsTr("运行中") : qsTr("启动")))
+                        enabled: bridge.launchRepairing
+                                 ? !bridge.launchCancelling
+                                 : (!bridge.busy && bridge.installingVersion.length === 0
+                                    && bridge.selectedIndex >= 0)
                         implicitWidth: 130
                         implicitHeight: 40
 
@@ -449,10 +483,13 @@ Item {
 
                         background: Rectangle {
                             radius: Theme.radiusSmall
-                            color: !parent.enabled ? "#99FFFFFF" : (parent.pressed ? Theme.primaryPressed : Theme.primary)
+                            color: bridge.launchRepairing
+                                   ? Theme.danger
+                                   : (!parent.enabled ? "#99FFFFFF"
+                                                      : (parent.pressed ? Theme.primaryPressed : Theme.primary))
                         }
 
-                        onClicked: bridge.launchGame()
+                        onClicked: bridge.launchRepairing ? bridge.cancelLaunchRepair() : bridge.launchGame()
                     }
                 }
             }

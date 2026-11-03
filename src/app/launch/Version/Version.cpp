@@ -226,9 +226,10 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         Detail parent;
         if (!LoadOne(parent_id, parent, error, depth + 1)) return false;
 
-        // 父版本的库排在前面，子版本追加；其余字段子版本优先
-        std::vector<Library> merged = parent.libraries;
-        merged.insert(merged.end(), detail.libraries.begin(), detail.libraries.end());
+        // 子版本（Forge/NeoForge）的库排在前面：它们自带的 log4j/ASM 等新版本
+        // 必须覆盖父版本里的旧版本，否则 modlauncher 会在启动阶段 NoSuchMethodError。
+        std::vector<Library> merged = detail.libraries;
+        merged.insert(merged.end(), parent.libraries.begin(), parent.libraries.end());
         detail.libraries = std::move(merged);
 
         if (detail.main_class.empty()) detail.main_class = parent.main_class;

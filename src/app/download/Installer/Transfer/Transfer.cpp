@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 
 #include "app/tools/tools.h"
 
@@ -22,8 +23,26 @@ bool Transfer::Verify(const std::string& path, const std::string& sha1) {
 
 bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Result& result,
                    std::string& error) const {
-    const int total = static_cast<int>(tasks.size());
+    // 版本 json 里同一个库可能出现多次（例如 1.16.5 的 lwjgl 带不同 rules）。
+    // 同一目标只能有一个下载任务，否则多个 worker 会同时写同一个 .part，互相覆盖后校验/落盘失败。
+    std::vector<Task> pending;
+    pending.reserve(tasks.size());
+    std::unordered_map<std::string, size_t> by_dest;
+    for (const Task& task : tasks) {
+        if (task.dest.empty()) continue;
+        const auto found = by_dest.find(task.dest);
+        if (found == by_dest.end()) {
+            by_dest.emplace(task.dest, pending.size());
+            pending.push_back(task);
+        } else if (pending[found->second].sha1.empty() && !task.sha1.empty()) {
+            pending[found->second] = task;
+        }
+    }
+
+    const int total = static_cast<int>(pending.size());
     if (total == 0) return true;
+
+    auto cancelled = [this] { return cancel_.load(std::memory_order_relaxed); };
 
     std::atomic<size_t> next{0};
     std::atomic<int> done{0};
@@ -36,10 +55,14 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
 
     auto worker = [&]() {
         while (!aborted.load(std::memory_order_relaxed)) {
+            if (cancelled()) {
+                aborted = true;
+                return;
+            }
             const size_t index = next.fetch_add(1, std::memory_order_relaxed);
-            if (index >= tasks.size()) return;
+            if (index >= pending.size()) return;
 
-            const Task& task = tasks[index];
+            const Task& task = pending[index];
             if (Verify(task.dest, task.sha1)) {
                 ++skipped;
             } else {
@@ -52,29 +75,53 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                 }
 
                 const std::string part = task.dest + ".part";
-                // 网络抖动重试两次，别为一次失败打断整个安装
-                for (int attempt = 0; ok && attempt < 3; ++attempt) {
-                    if (tools::DownloadFile(task.url, part, local_error)) break;
-                    if (attempt == 2) ok = false;
-                    else tools::SleepMs(300);
-                }
-
-                if (ok && !task.sha1.empty()) {
-                    std::string actual;
-                    if (!tools::Sha1File(part, actual) ||
-                        tools::ToLower(actual) != tools::ToLower(task.sha1)) {
-                        ok = false;
-                        local_error = "校验失败";
-                    }
-                }
-
                 if (ok) {
-                    std::error_code ec;
-                    std::filesystem::rename(tools::ToPath(part),
-                                            tools::ToPath(task.dest), ec);
-                    if (ec) {
-                        ok = false;
-                        local_error = "落盘失败";
+                    ok = false;
+                    // 网络抖动或落盘被占用都重试，别为一次失败打断整个安装
+                    for (int attempt = 0; attempt < 3; ++attempt) {
+                        std::error_code ignored;
+                        std::filesystem::remove(tools::ToPath(part), ignored);
+
+                        if (!tools::DownloadFile(task.url, part, local_error)) {
+                            local_error = "下载失败: " + local_error;
+                            tools::SleepMs(300);
+                            continue;
+                        }
+                        if (cancelled()) {
+                            local_error = "已取消";
+                            break;
+                        }
+
+                        if (!task.sha1.empty()) {
+                            std::string actual;
+                            if (!tools::Sha1File(part, actual) ||
+                                tools::ToLower(actual) != tools::ToLower(task.sha1)) {
+                                local_error = "校验失败";
+                                tools::SleepMs(300);
+                                continue;
+                            }
+                        }
+                        if (cancelled()) {
+                            local_error = "已取消";
+                            break;
+                        }
+
+                        std::error_code ec;
+                        std::filesystem::rename(tools::ToPath(part), tools::ToPath(task.dest), ec);
+                        if (ec) {
+                            // 目标已存在或被占用：先删目标再试一次
+                            std::error_code remove_error;
+                            std::filesystem::remove(tools::ToPath(task.dest), remove_error);
+                            ec.clear();
+                            std::filesystem::rename(tools::ToPath(part), tools::ToPath(task.dest),
+                                                    ec);
+                        }
+                        if (!ec) {
+                            ok = true;
+                            break;
+                        }
+                        local_error = "落盘失败: " + task.dest;
+                        tools::SleepMs(300);
                     }
                 }
 
@@ -106,6 +153,10 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
     result.downloaded += downloaded.load();
     result.skipped += skipped.load();
     result.failed += failed.load();
+    if (cancelled()) {
+        error = "已取消";
+        return false;
+    }
     error = first_error;
     return failed.load() == 0;
 }

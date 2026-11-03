@@ -1,6 +1,7 @@
 // 安装器的传输底座：只认 URL 和 sha1，不关心里面是 jar 还是资源。
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -31,8 +32,15 @@ public:
     bool Run(const std::vector<Task>& tasks, const Progress& progress, Result& result,
              std::string& error) const;
 
+    // 启动页“取消自动补齐”用；当前文件下载完后停止，未开始的 worker 直接退出。
+    void Cancel() const { cancel_.store(true, std::memory_order_relaxed); }
+    void ResetCancel() const { cancel_.store(false, std::memory_order_relaxed); }
+
     // 单独校验一个文件，供“只检查不下载”用
     static bool Verify(const std::string& path, const std::string& sha1);
+
+private:
+    mutable std::atomic<bool> cancel_{false};
 };
 
 }  // namespace installer

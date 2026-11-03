@@ -352,6 +352,22 @@ Item {
                     color: Theme.textSecondary
                     wrapMode: Text.WordWrap
                 }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 6
+                    radius: 3
+                    color: Theme.border
+                    visible: bridge.downloadBusy || bridge.downloadFailed
+
+                    Rectangle {
+                        width: bridge.downloadFailed ? parent.width
+                                                     : parent.width * Math.max(0, Math.min(1, bridge.downloadProgress))
+                        height: parent.height
+                        radius: 3
+                        color: bridge.downloadFailed ? Theme.danger : Theme.primary
+                    }
+                }
             }
         }
     }
