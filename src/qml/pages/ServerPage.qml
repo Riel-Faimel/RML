@@ -16,6 +16,8 @@ Item {
     property var difficultyLabels: [qsTr("和平"), qsTr("简单"), qsTr("普通"), qsTr("困难")]
     property var installationLabels: []
     property string lastSelectionKey: ""
+    property int pendingDelete: -1
+    property string pendingDeleteName: ""
 
     function syncParamFields() {
         if (serverBridge.selectedIndex < 0) return
@@ -78,6 +80,42 @@ Item {
                                   page.difficulties[createDifficultyBox.currentIndex], maxPlayers)
     }
 
+    function deleteServerAt(index, name) {
+        page.pendingDelete = index
+        page.pendingDeleteName = String(name)
+        confirmDelete.open()
+    }
+
+    // server.properties 全部条目：读出来填模型，保存时再拼回去
+    function loadProperties() {
+        propsModel.clear()
+        var items = serverBridge.readServerProperties()
+        for (var i = 0; i < items.length; ++i) {
+            propsModel.append({ key: String(items[i].key), value: String(items[i].value) })
+        }
+        newKeyField.text = ""
+        newValueField.text = ""
+        propsDialog.open()
+    }
+
+    function saveProperties() {
+        var entries = []
+        for (var i = 0; i < propsModel.count; ++i) {
+            var item = propsModel.get(i)
+            entries.push({ key: item.key, value: item.value })
+        }
+        return serverBridge.saveServerProperties(entries)
+    }
+
+    function addProperty() {
+        var key = newKeyField.text.trim()
+        if (key.length === 0) return
+        propsModel.append({ key: key, value: newValueField.text })
+        newKeyField.text = ""
+        newValueField.text = ""
+        newKeyField.forceActiveFocus()
+    }
+
     function scrollConsoleToBottom() {
         var flickable = consoleScroll.contentItem
         if (!flickable) return
@@ -113,13 +151,10 @@ Item {
         function onChanged() { page.syncSelection() }
     }
 
-    Dialog {
+    SoftDialog {
         id: createDialog
-        modal: true
-        anchors.centerIn: Overlay.overlay
         title: qsTr("新建服务器")
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 440
+        width: 460
 
         onOpened: {
             serverBridge.reloadInstallations()
@@ -254,13 +289,10 @@ Item {
         }
     }
 
-    Dialog {
+    SoftDialog {
         id: renameDialog
-        modal: true
-        anchors.centerIn: Overlay.overlay
         title: qsTr("重命名服务器")
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 380
+        width: 400
 
         onOpened: {
             renameField.text = serverBridge.name
@@ -281,23 +313,104 @@ Item {
         }
     }
 
-    Dialog {
+    SoftDialog {
         id: confirmDelete
-        modal: true
-        anchors.centerIn: Overlay.overlay
         title: qsTr("删除服务器")
-        standardButtons: Dialog.Yes | Dialog.Cancel
-        width: 380
+        okText: qsTr("删除")
+        width: 400
 
         Text {
-            width: parent.width
-            text: qsTr("确定删除「%1」？服务器目录会被永久删除。").arg(serverBridge.name)
+            Layout.fillWidth: true
+            text: qsTr("确定删除「%1」？服务器目录会被永久删除。").arg(page.pendingDeleteName)
             wrapMode: Text.WrapAnywhere
             color: Theme.text
             font.pixelSize: 13
         }
 
-        onAccepted: serverBridge.removeServer()
+        onAccepted: serverBridge.removeServerAt(page.pendingDelete)
+    }
+
+    ListModel { id: propsModel }
+
+    SoftDialog {
+        id: propsDialog
+        title: qsTr("服务器属性（server.properties）")
+        width: 640
+        height: 560
+        onAccepted: {
+            if (page.saveProperties()) page.syncParamFields()
+        }
+
+        ListView {
+            id: propsList
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 6
+            model: propsModel
+
+            delegate: RowLayout {
+                width: propsList.width
+                height: 38
+                spacing: 8
+
+                Text {
+                    Layout.preferredWidth: 180
+                    Layout.minimumWidth: 100
+                    text: model.key
+                    elide: Text.ElideRight
+                    color: Theme.text
+                    font.pixelSize: 12
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                SoftField {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: model.value
+                    onTextEdited: propsModel.setProperty(index, "value", text)
+                }
+
+                SoftButton {
+                    text: qsTr("删除")
+                    onClicked: propsModel.remove(index)
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            SoftField {
+                id: newKeyField
+                Layout.preferredWidth: 180
+                Layout.minimumWidth: 100
+                placeholderText: qsTr("新键名")
+            }
+
+            SoftField {
+                id: newValueField
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                placeholderText: qsTr("值")
+                onAccepted: page.addProperty()
+            }
+
+            SoftButton {
+                text: qsTr("添加")
+                primary: true
+                onClicked: page.addProperty()
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("online-mode=true 为正版验证。启动器目前用离线账号启动游戏，请保持 false；改完重启服务器生效。")
+            color: Theme.textSecondary
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+        }
     }
 
     RowLayout {
@@ -309,6 +422,7 @@ Item {
         GlassPanel {
             backdrop: page.backdrop
             Layout.preferredWidth: 300
+            Layout.maximumWidth: 300
             Layout.fillHeight: true
 
             ColumnLayout {
@@ -376,7 +490,7 @@ Item {
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 12
-                            anchors.rightMargin: 10
+                            anchors.rightMargin: 40
                             spacing: 8
 
                             Text {
@@ -389,7 +503,7 @@ Item {
                             }
 
                             Text {
-                                Layout.maximumWidth: 120
+                                Layout.maximumWidth: 96
                                 text: modelData.status
                                 elide: Text.ElideRight
                                 font.pixelSize: 12
@@ -401,6 +515,40 @@ Item {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: serverBridge.selectAt(index)
+                        }
+
+                        Button {
+                            id: rowMoreButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 30
+                            height: 30
+                            padding: 0
+                            onClicked: rowMenu.popup()
+
+                            contentItem: Text {
+                                text: "⋯"
+                                font.pixelSize: 18
+                                color: Theme.textSecondary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            background: Rectangle {
+                                radius: Theme.radiusSmall
+                                color: rowMoreButton.hovered ? "#88FFFFFF" : "transparent"
+                            }
+                        }
+
+                        SoftMenu {
+                            id: rowMenu
+                            y: rowMoreButton.height
+
+                            SoftMenuItem {
+                                text: qsTr("删除服务器")
+                                onTriggered: page.deleteServerAt(index, modelData.name)
+                            }
                         }
                     }
 
@@ -609,8 +757,8 @@ Item {
                     }
 
                     SoftButton {
-                        text: qsTr("删除")
-                        onClicked: confirmDelete.open()
+                        text: qsTr("详细信息")
+                        onClicked: page.loadProperties()
                     }
 
                     Item { Layout.fillWidth: true }

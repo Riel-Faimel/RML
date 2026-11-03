@@ -14,6 +14,8 @@ struct Instance {
     std::string gamemode = "survival";
     std::string difficulty = "easy";
     int max_players = 20;
+    // 启动器目前用离线账号启动游戏，默认关闭正版验证；需要正版验证时在面板里打开
+    bool online_mode = false;
     int pid = 0;  // 上次记录的进程号，0 表示没在跑
 };
 

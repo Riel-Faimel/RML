@@ -32,6 +32,9 @@ Item {
         }
     }
 
+    // 默认就拉一次版本清单，不再依赖手动刷新
+    Component.onCompleted: bridge.loadGameVersions()
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: Theme.pagePadding
@@ -97,7 +100,7 @@ Item {
                 anchors.margins: 20
                 spacing: 12
 
-                // 版本分类：只要刷新
+                // 版本分类
                 RowLayout {
                     Layout.fillWidth: true
                     visible: page.category === "version"
@@ -138,27 +141,6 @@ Item {
                                 border.color: Theme.primary
                             }
                         }
-                    }
-
-                    Button {
-                        text: qsTr("刷新")
-                        enabled: !bridge.downloadBusy
-                        implicitWidth: 100
-                        implicitHeight: 36
-                        contentItem: Text {
-                            text: parent.text
-                            color: Theme.primary
-                            font.pixelSize: 13
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: "#88FFFFFF"
-                            border.width: 1
-                            border.color: Theme.primary
-                        }
-                        onClicked: bridge.loadGameVersions()
                     }
                 }
 
@@ -355,8 +337,10 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         visible: list.count === 0
-                        text: page.category === "version" ? qsTr("点「刷新」取版本清单")
-                                                          : qsTr("输入关键词搜索")
+                        text: page.category === "version"
+                              ? (bridge.downloadBusy ? qsTr("正在获取版本清单…")
+                                                     : qsTr("没有拿到版本清单，检查网络或软件源"))
+                              : qsTr("输入关键词搜索")
                         color: Theme.textSecondary
                     }
                 }

@@ -54,8 +54,13 @@ public slots:
     void openFolder();
     void renameServer(const QString& name);
     void removeServer();
+    void removeServerAt(int index);
     void applyParams(int port, int memoryMb, const QString& gamemode, const QString& difficulty,
                      int maxPlayers);
+
+    // server.properties 详细编辑
+    QVariantList readServerProperties();
+    bool saveServerProperties(const QVariantList& entries);
 
 signals:
     void changed();
@@ -66,7 +71,6 @@ private slots:
 
 private:
     const server::Instance* Current() const;
-    void Sync();
 
     Server& server_;
     QTimer timer_;

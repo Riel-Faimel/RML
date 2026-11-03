@@ -161,8 +161,16 @@ void Bridge::resetBackground() {
     emit changed();
 }
 
+QString Bridge::SelectedName() const {
+    if (selected_index_ >= 0 && selected_index_ < versions_.size()) {
+        return versions_.at(selected_index_);
+    }
+    return selected_;
+}
+
 void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& jvmArgs) {
-    memory_mb_ = memoryMb < 512 ? 512 : memoryMb;
+    // 小于 512 的值只在前端提示，不覆盖；否则用户逐位输入时会被改成 512
+    if (memoryMb >= 512) memory_mb_ = memoryMb;
     gc_mode_ = gc;
     jvm_args_ = jvmArgs;
 

@@ -1,6 +1,7 @@
 #include "app/tools/tools.h"
 
 #include <cctype>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <thread>
@@ -21,6 +22,22 @@ namespace {
 std::string ToUtf8(const fs::path& path) {
     const auto text = path.u8string();
     return std::string(text.begin(), text.end());
+}
+
+// 临时响应文件必须唯一：多个线程/实例同时 HttpGet 时固定文件名会互相覆盖。
+// 放 RML 数据目录而不是 %TEMP%，避免受限环境里子进程不能写系统临时目录。
+std::string TempBodyPath() {
+    static std::atomic<unsigned> counter{0};
+    const std::string dir = tools::JoinPath(tools::DataRoot(), "tmp");
+    std::string error;
+    tools::EnsureDir(dir, error);
+#ifdef _WIN32
+    const std::string name = "http-" + std::to_string(GetCurrentProcessId()) + "-" +
+                             std::to_string(counter.fetch_add(1)) + ".tmp";
+#else
+    const std::string name = "http-" + std::to_string(counter.fetch_add(1)) + ".tmp";
+#endif
+    return tools::JoinPath(dir, name);
 }
 
 }  // namespace
@@ -145,9 +162,7 @@ std::string DataRoot() {
 }
 
 bool HttpGet(const std::string& url, std::string& out, std::string& error) {
-    const char* temp_dir = std::getenv("TEMP");
-    const std::string temp =
-        JoinPath(temp_dir != nullptr ? temp_dir : ".", "rml-http-body.tmp");
+    const std::string temp = TempBodyPath();
     if (!DownloadFile(url, temp, error)) return false;
     out = ReadTextFile(temp);
     std::error_code ec;
@@ -272,8 +287,7 @@ bool DownloadFile(const std::string& url, const std::string& path, std::string& 
 
 bool HttpGet(const std::string& url, const std::vector<std::string>& headers, std::string& out,
              std::string& error) {
-    const char* temp_dir = std::getenv("TEMP");
-    const std::string temp = JoinPath(temp_dir != nullptr ? temp_dir : ".", "rml-http-body.tmp");
+    const std::string temp = TempBodyPath();
     if (!FetchToFile(url, temp, &headers, error)) return false;
     out = ReadTextFile(temp);
     std::error_code ec;

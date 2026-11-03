@@ -98,7 +98,9 @@ void ServerBridge::selectAt(int index) {
     if (index < 0 || static_cast<size_t>(index) >= server_.Instances().size()) return;
     if (selected_ == index) return;
     selected_ = index;
-    console_ = QString::fromLocal8Bit(server_.Console(index, 64 * 1024).c_str());
+    console_ = server_.Running(index)
+                   ? QString::fromLocal8Bit(server_.Console(index, 64 * 1024).c_str())
+                   : QString();
     last_console_ = console_;
     message_.clear();
     emit consoleChanged();
@@ -159,6 +161,9 @@ void ServerBridge::startServer() {
         message_ = QString::fromStdString(error);
     } else {
         message_ = QStringLiteral("正在启动…");
+        console_.clear();
+        last_console_.clear();
+        emit consoleChanged();
     }
     emit changed();
 }
@@ -233,6 +238,29 @@ void ServerBridge::removeServer() {
     emit changed();
 }
 
+void ServerBridge::removeServerAt(int index) {
+    if (index < 0 || static_cast<size_t>(index) >= server_.Instances().size()) return;
+    std::string error;
+    if (!server_.Remove(index, error)) {
+        message_ = QString::fromStdString(error);
+        emit changed();
+        return;
+    }
+
+    if (server_.Instances().empty()) {
+        selected_ = -1;
+    } else if (selected_ > index) {
+        --selected_;
+    } else if (selected_ == index) {
+        selected_ = std::min(index, static_cast<int>(server_.Instances().size()) - 1);
+    }
+    console_.clear();
+    last_console_.clear();
+    message_ = QStringLiteral("已删除服务器");
+    emit consoleChanged();
+    emit changed();
+}
+
 void ServerBridge::applyParams(int port, int memoryMb, const QString& gamemode,
                                const QString& difficulty, int maxPlayers) {
     if (selected_ < 0) return;
@@ -246,6 +274,50 @@ void ServerBridge::applyParams(int port, int memoryMb, const QString& gamemode,
                        : QStringLiteral("参数已保存");
     }
     emit changed();
+}
+
+QVariantList ServerBridge::readServerProperties() {
+    QVariantList out;
+    if (selected_ < 0) return out;
+
+    std::vector<std::pair<std::string, std::string>> entries;
+    std::string error;
+    if (!server_.ReadProperties(selected_, entries, error)) {
+        message_ = QString::fromStdString(error);
+        return out;
+    }
+    for (const auto& entry : entries) {
+        QVariantMap map;
+        map["key"] = QString::fromStdString(entry.first);
+        map["value"] = QString::fromStdString(entry.second);
+        out.append(map);
+    }
+    return out;
+}
+
+bool ServerBridge::saveServerProperties(const QVariantList& entries) {
+    if (selected_ < 0) return false;
+
+    std::vector<std::pair<std::string, std::string>> values;
+    for (const auto& item : entries) {
+        const QVariantMap map = item.toMap();
+        const std::string key = map.value("key").toString().trimmed().toStdString();
+        if (key.empty()) continue;
+        values.emplace_back(key, map.value("value").toString().toStdString());
+    }
+
+    std::string error;
+    if (!server_.SaveProperties(selected_, values, error)) {
+        message_ = QString::fromStdString(error);
+        emit changed();
+        return false;
+    }
+
+    message_ = server_.Running(selected_)
+                   ? QStringLiteral("server.properties 已保存；重启后生效")
+                   : QStringLiteral("server.properties 已保存");
+    emit changed();
+    return true;
 }
 
 void ServerBridge::Tick() {
@@ -264,8 +336,11 @@ void ServerBridge::Tick() {
     }
 
     if (selected_ >= 0) {
+        // 停止后不显示上一次的日志，避免“没运行却有输出”的误解
         const QString text =
-            QString::fromLocal8Bit(server_.Console(selected_, 64 * 1024).c_str());
+            server_.Running(selected_)
+                ? QString::fromLocal8Bit(server_.Console(selected_, 64 * 1024).c_str())
+                : QString();
         if (text != last_console_) {
             last_console_ = text;
             console_ = text;

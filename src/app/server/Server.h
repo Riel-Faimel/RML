@@ -20,6 +20,7 @@ public:
         std::string gamemode = "survival";
         std::string difficulty = "easy";
         int max_players = 20;
+        bool online_mode = false;
     };
 
     explicit Server(std::string game_dir);
@@ -36,6 +37,13 @@ public:
     bool Update(int index, int port, int memory_mb, const std::string& gamemode,
                 const std::string& difficulty, int max_players, std::string& error);
 
+    // server.properties 全部条目（详细编辑用）
+    bool ReadProperties(int index, std::vector<std::pair<std::string, std::string>>& out,
+                        std::string& error) const;
+    bool SaveProperties(int index,
+                        const std::vector<std::pair<std::string, std::string>>& entries,
+                        std::string& error);
+
     bool Start(int index, std::string& error);
     bool Stop(int index, bool force, std::string& error);
     bool Send(int index, const std::string& command, std::string& error);
@@ -46,7 +54,7 @@ public:
     std::string Console(int index, size_t max_bytes) const;
 
 private:
-    bool EnsureFile(const server::Instance& instance, bool overwrite, std::string& error);
+    bool EnsureFile(const server::Instance& instance, std::string& error);
     void SyncPids();
     std::string JavaFor(const server::Instance& instance, std::string& error) const;
 

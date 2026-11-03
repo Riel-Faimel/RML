@@ -40,12 +40,9 @@ Item {
         onAccepted: bridge.setBackground(selectedFile)
     }
 
-    Dialog {
+    SoftDialog {
         id: addSourceDialog
-        modal: true
-        anchors.centerIn: Overlay.overlay
         title: qsTr("添加软件源")
-        standardButtons: Dialog.Ok | Dialog.Cancel
         width: 460
 
         onOpened: {
@@ -108,6 +105,7 @@ Item {
         // 左：外观 + Java
         ColumnLayout {
             Layout.preferredWidth: 360
+            Layout.maximumWidth: 360
             Layout.fillHeight: true
             spacing: Theme.gap
 

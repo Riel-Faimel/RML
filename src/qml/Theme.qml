@@ -12,6 +12,7 @@ QtObject {
     readonly property color border: "#E3E8EF"
     readonly property color text: "#1F2A37"
     readonly property color textSecondary: "#6B7684"
+    readonly property color danger: "#D64545"
 
     readonly property int radiusLarge: 16
     readonly property int radius: 10

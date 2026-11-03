@@ -14,8 +14,10 @@ Item {
 
     function applyOptions() {
         var parsed = parseInt(memoryField.text)
-        var memory = isNaN(parsed) ? bridge.memoryMb : parsed
-        bridge.applyLaunchOptions(memory, gcBox.currentText, argsField.text)
+        var valid = !isNaN(parsed) && parsed >= 512 && parsed <= 32768
+        memoryWarning.visible = !valid
+        if (!valid) return
+        bridge.applyLaunchOptions(parsed, gcBox.currentText, argsField.text)
     }
 
     Dialog {
@@ -207,7 +209,7 @@ Item {
                     spacing: 10
 
                     Text {
-                        text: bridge.selected
+                        text: bridge.selectedName
                         font.pixelSize: 24
                         font.bold: true
                         color: Theme.text
@@ -349,6 +351,16 @@ Item {
                                 currentIndex: Math.max(0, model.indexOf(bridge.gcMode))
                                 onActivated: page.applyOptions()
                             }
+                        }
+
+                        Text {
+                            id: memoryWarning
+                            Layout.fillWidth: true
+                            visible: false
+                            text: qsTr("内存需在 512–32768 MB 之间，当前不会保存")
+                            color: Theme.danger
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
                         }
 
                         RowLayout {

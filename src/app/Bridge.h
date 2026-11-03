@@ -15,6 +15,7 @@ class Bridge : public QObject {
 
     Q_PROPERTY(QStringList versions READ Versions NOTIFY changed)
     Q_PROPERTY(QString selected READ Selected NOTIFY changed)
+    Q_PROPERTY(QString selectedName READ SelectedName NOTIFY changed)
     Q_PROPERTY(QString details READ Details NOTIFY changed)
     Q_PROPERTY(QString javaInfo READ JavaInfo NOTIFY changed)
     Q_PROPERTY(QString status READ Status NOTIFY changed)
@@ -47,6 +48,7 @@ public:
 
     QStringList Versions() const { return versions_; }
     QString Selected() const { return selected_; }
+    QString SelectedName() const;
     QString Details() const { return details_; }
     QString JavaInfo() const { return java_info_; }
     QString Status() const { return status_; }

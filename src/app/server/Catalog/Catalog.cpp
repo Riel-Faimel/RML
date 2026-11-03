@@ -129,6 +129,7 @@ void Catalog::LoadInstances() {
         instance.difficulty = item["difficulty"].AsString();
         if (instance.difficulty.empty()) instance.difficulty = "easy";
         instance.max_players = static_cast<int>(item["maxPlayers"].AsInt(20));
+        instance.online_mode = item["onlineMode"].AsBool(false);
         instance.pid = static_cast<int>(item["pid"].AsInt(0));
         if (instance.pid > 0 && !Runner::PidAlive(instance.pid)) instance.pid = 0;
 
@@ -161,6 +162,7 @@ bool Catalog::Save(std::string& error) const {
         item.Set("gamemode", Json::Value::String(instance.gamemode));
         item.Set("difficulty", Json::Value::String(instance.difficulty));
         item.Set("maxPlayers", Json::Value::Int(instance.max_players));
+        item.Set("onlineMode", Json::Value::Bool(instance.online_mode));
         item.Set("pid", Json::Value::Int(instance.pid));
         instances.Push(std::move(item));
     }

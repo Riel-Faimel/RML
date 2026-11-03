@@ -179,6 +179,8 @@ class Fabric  : public Flow<Fabric>  { ... };
   可以在设置页改成自定义 maven 根；源不通时安装会明确报下载失败
 - 服务端只支持原版与 Fabric：原版下载 Mojang `server.jar`；Fabric 用 meta 的 `/server/json`
   装原版 server.jar + loader 依赖，首次启动在实例目录生成 `.fabric/remappedJars`（需要可写）
+- 新实例默认 `online-mode=false`（启动器目前用离线账号）；正版验证在服务器页“详细信息”里改。
+  启动时会按实例配置重写受管键（端口/玩法/难度/人数/online-mode），其余键保留
 - 服务端日志在实例目录 `logs/console.log`，控制台只读尾部；优雅停止靠 stdin `stop`，
   启动器重启后只能按记录的 pid 强制停止
 - QML 的 `clip` 只支持矩形裁剪；圆角裁剪需要自定义图元

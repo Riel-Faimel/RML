@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -16,8 +17,8 @@
 
 namespace {
 
-const char* const kManagedKeys[] = {"server-port", "gamemode",       "difficulty",
-                                    "max-players", "online-mode",    "motd"};
+const char* const kManagedKeys[] = {"server-port", "gamemode", "difficulty", "max-players",
+                                    "online-mode"};
 
 int ManagedKeyIndex(const std::string& key) {
     for (int i = 0; i < static_cast<int>(std::size(kManagedKeys)); ++i) {
@@ -90,8 +91,7 @@ std::map<std::string, std::string> PropertyValues(const server::Instance& instan
         {"gamemode", instance.gamemode},
         {"difficulty", instance.difficulty},
         {"max-players", std::to_string(instance.max_players)},
-        {"online-mode", "true"},
-        {"motd", instance.name},
+        {"online-mode", instance.online_mode ? "true" : "false"},
     };
 }
 
@@ -252,8 +252,9 @@ bool Server::Create(const Server::CreateOptions& options, std::string& error) {
     instance.gamemode = options.gamemode;
     instance.difficulty = options.difficulty;
     instance.max_players = options.max_players;
+    instance.online_mode = options.online_mode;
 
-    if (!EnsureFile(instance, false, error)) return false;
+    if (!EnsureFile(instance, error)) return false;
 
     catalog_.Instances().push_back(std::move(instance));
     if (!catalog_.Save(error)) {
@@ -385,6 +386,129 @@ bool Server::Update(int index, int port, int memory_mb, const std::string& gamem
     return true;
 }
 
+bool Server::ReadProperties(int index, std::vector<std::pair<std::string, std::string>>& out,
+                            std::string& error) const {
+    out.clear();
+    if (index < 0 || index >= static_cast<int>(catalog_.Instances().size())) {
+        error = "服务器实例不存在";
+        return false;
+    }
+
+    const std::string path = PropertiesPath(game_dir_, catalog_.Instances()[index]);
+    if (!tools::PathExists(path)) return true;
+
+    const std::string text = tools::ReadTextFile(path);
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find('\n', start);
+        std::string line =
+            end == std::string::npos ? text.substr(start) : text.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+
+        const std::string trimmed = TrimWhitespace(line);
+        if (!trimmed.empty() && trimmed[0] != '#' && trimmed[0] != '!') {
+            const size_t equals = line.find('=');
+            if (equals != std::string::npos) {
+                const std::string key = TrimWhitespace(line.substr(0, equals));
+                if (!key.empty()) out.emplace_back(key, line.substr(equals + 1));
+            } else {
+                out.emplace_back(trimmed, std::string());
+            }
+        }
+
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return true;
+}
+
+bool Server::SaveProperties(int index,
+                            const std::vector<std::pair<std::string, std::string>>& entries,
+                            std::string& error) {
+    if (index < 0 || index >= static_cast<int>(catalog_.Instances().size())) {
+        error = "服务器实例不存在";
+        return false;
+    }
+
+    server::Instance updated = catalog_.Instances()[index];
+
+    // 同名键只保留最后一次输入，避免文件里出现重复项
+    std::vector<std::pair<std::string, std::string>> unique;
+    std::map<std::string, size_t> seen;
+    for (const auto& entry : entries) {
+        const std::string key = TrimWhitespace(entry.first);
+        if (key.empty()) continue;
+
+        std::string value = entry.second;
+        for (char& c : value) {
+            if (c == '\n' || c == '\r') c = ' ';
+        }
+
+        const auto found = seen.find(key);
+        if (found != seen.end()) {
+            unique[found->second].second = value;
+            continue;
+        }
+        seen.emplace(key, unique.size());
+        unique.emplace_back(key, value);
+    }
+
+    std::string text;
+    for (const auto& entry : unique) {
+        const std::string& key = entry.first;
+        const std::string& value = entry.second;
+
+        if (key == "server-port") {
+            try {
+                const int port = std::stoi(TrimWhitespace(value));
+                if (port < 1 || port > 65535) throw std::out_of_range("port");
+                updated.port = port;
+            } catch (...) {
+                error = "server-port 必须是 1-65535 的整数: " + value;
+                return false;
+            }
+        } else if (key == "max-players") {
+            try {
+                const int players = std::stoi(TrimWhitespace(value));
+                if (players < 1) throw std::out_of_range("players");
+                updated.max_players = players;
+            } catch (...) {
+                error = "max-players 必须是正整数: " + value;
+                return false;
+            }
+        } else if (key == "gamemode") {
+            updated.gamemode = TrimWhitespace(value);
+        } else if (key == "difficulty") {
+            updated.difficulty = TrimWhitespace(value);
+        } else if (key == "online-mode") {
+            updated.online_mode = tools::ToLower(TrimWhitespace(value)) == "true";
+        }
+
+        text += key + "=" + value + "\n";
+    }
+
+    const std::string path = PropertiesPath(game_dir_, updated);
+    const size_t slash = path.find_last_of('/');
+    if (slash != std::string::npos) {
+        std::string dir_error;
+        if (!tools::EnsureDir(path.substr(0, slash), dir_error)) {
+            error = dir_error;
+            return false;
+        }
+    }
+    if (!tools::WriteTextFile(path, text)) {
+        error = "写入服务器配置失败: " + path;
+        return false;
+    }
+
+    catalog_.Instances()[index] = updated;
+    if (!catalog_.Save(error)) {
+        error = "保存服务器实例失败: " + error;
+        return false;
+    }
+    return true;
+}
+
 bool Server::Start(int index, std::string& error) {
     if (index < 0 || index >= static_cast<int>(catalog_.Instances().size())) {
         error = "服务器实例不存在";
@@ -442,7 +566,7 @@ bool Server::Start(int index, std::string& error) {
     const std::string java = JavaFor(instance, error);
     if (java.empty()) return false;
 
-    if (!EnsureFile(instance, false, error)) return false;
+    if (!EnsureFile(instance, error)) return false;
 
     const std::string instance_dir = InstanceDir(game_dir_, instance);
     const std::string log_dir = tools::JoinPath(instance_dir, "logs");
@@ -584,17 +708,25 @@ std::string Server::Console(int index, size_t max_bytes) const {
     return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
 }
 
-bool Server::EnsureFile(const server::Instance& instance, bool overwrite, std::string& error) {
+bool Server::EnsureFile(const server::Instance& instance, std::string& error) {
     const std::string dir = InstanceDir(game_dir_, instance);
-    const std::string properties = tools::JoinPath(dir, "server.properties");
-    if (overwrite || !tools::PathExists(properties)) {
-        if (!WriteProperties(game_dir_, instance, overwrite, error)) return false;
-    }
+
+    // 受管参数始终按实例配置重写（未知行保留）；这样旧实例的 online-mode 也会被修正
+    if (!WriteProperties(game_dir_, instance, true, error)) return false;
 
     const std::string eula = tools::JoinPath(dir, "eula.txt");
-    if (overwrite || !tools::PathExists(eula)) {
-        if (!tools::WriteTextFile(eula, "eula=true\n")) {
-            error = "写入 EULA 文件失败: " + eula;
+    if (!tools::PathExists(eula) && !tools::WriteTextFile(eula, "eula=true\n")) {
+        error = "写入 EULA 文件失败: " + eula;
+        return false;
+    }
+
+    // 首次启动时服务端会因为缺名单打 WARN，先放空数组
+    for (const char* name :
+         {"banned-players.json", "banned-ips.json", "ops.json", "whitelist.json"}) {
+        const std::string path = tools::JoinPath(dir, name);
+        if (tools::PathExists(path)) continue;
+        if (!tools::WriteTextFile(path, "[]\n")) {
+            error = "写入服务端名单文件失败: " + path;
             return false;
         }
     }
