@@ -1,17 +1,19 @@
 #include "app/download/Installer/Placement/Placement.h"
 
+#include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
 namespace download {
 namespace installer {
 
 std::string Placement::Directory(const std::string& instance_dir, Kind kind) {
+    const ::Directory paths(instance_dir);
     switch (kind) {
-        case Kind::Mod: return tools::JoinPath(instance_dir, "mods");
-        case Kind::Shaderpack: return tools::JoinPath(instance_dir, "shaderpacks");
-        case Kind::Resourcepack: return tools::JoinPath(instance_dir, "resourcepacks");
-        case Kind::Datapack: return tools::JoinPath(instance_dir, "datapacks");
-        case Kind::World: return tools::JoinPath(instance_dir, "saves");
+        case Kind::Mod: return paths.ModsRoot();
+        case Kind::Shaderpack: return paths.ShaderPacksRoot();
+        case Kind::Resourcepack: return paths.ResourcePacksRoot();
+        case Kind::Datapack: return paths.DatapacksRoot();
+        case Kind::World: return paths.SavesRoot();
     }
     return instance_dir;
 }

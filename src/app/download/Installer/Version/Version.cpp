@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -34,23 +35,21 @@ bool MatchesRules(const Json::Value& rules) {
 bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
                              std::vector<Transfer::Task>& out, std::string& error) const {
     (void)error;
-    const std::string game_dir = version_.GameDir();
+    const Directory& paths = version_.Paths();
     const std::string selected = version_.Selected();
-    const std::string version_dir = version_.VersionDir(selected);
 
     if (!detail.client_url.empty()) {
         Transfer::Task task;
         task.url = detail.client_url;
         task.sha1 = detail.client_sha1;
         // 继承来的客户端 jar（Forge 继承原版）已经在原版目录里，别再拷一份到加载器目录
-        task.dest = detail.client_jar.empty() ? tools::JoinPath(version_dir, selected + ".jar")
-                                              : detail.client_jar;
+        task.dest = detail.client_jar.empty() ? paths.VersionJar(selected) : detail.client_jar;
         task.label = selected + ".jar";
         task.size = detail.client_size;
         out.push_back(std::move(task));
     }
 
-    const std::string libraries_root = tools::JoinPath(game_dir, "libraries");
+    const std::string libraries_root = paths.LibrariesRoot();
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules)) continue;
         std::string relative = library.path.empty() ? tools::MavenToPath(library.name) : library.path;
@@ -90,8 +89,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
         Transfer::Task task;
         task.url = detail.asset_index_url;
         task.sha1 = detail.asset_index_sha1;
-        task.dest = tools::JoinPath(tools::JoinPath(tools::JoinPath(game_dir, "assets"), "indexes"),
-                                    detail.asset_index + ".json");
+        task.dest = paths.AssetIndexesRoot() + "/" + detail.asset_index + ".json";
         task.label = "assets/indexes/" + detail.asset_index + ".json";
         out.push_back(std::move(task));
     }
@@ -100,10 +98,8 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
 
 bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                               std::vector<Transfer::Task>& out, std::string& error) const {
-    const std::string game_dir = version_.GameDir();
-    const std::string index_path =
-        tools::JoinPath(tools::JoinPath(tools::JoinPath(game_dir, "assets"), "indexes"),
-                        detail.asset_index + ".json");
+    const Directory paths(version_.GameDir());
+    const std::string index_path = paths.AssetIndexesRoot() + "/" + detail.asset_index + ".json";
     const std::string text = tools::ReadTextFile(index_path);
     if (text.empty()) {
         error = "读不到资源索引: " + index_path;
@@ -120,7 +116,7 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::
         return false;
     }
 
-    const std::string objects_root = tools::JoinPath(tools::JoinPath(game_dir, "assets"), "objects");
+    const std::string objects_root = paths.AssetObjectsRoot();
     const std::string base =
         assets_root.empty() ? "https://resources.download.minecraft.net" : assets_root;
     for (size_t i = 0; i < objects.Size(); ++i) {
@@ -174,7 +170,8 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
 
 bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
                           const std::string& loader, bool complete) {
-    const std::string dir = tools::JoinPath(tools::JoinPath(game_dir, "versions"), id);
+    const Directory paths(game_dir);
+    const std::string dir = paths.VersionDir(id);
     std::string error;
     if (!tools::EnsureDir(dir, error)) return false;
 
@@ -182,14 +179,14 @@ bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
     root.Set("managed", Json::Value::Bool(true));
     root.Set("loader", Json::Value::String(loader));
     root.Set("complete", Json::Value::Bool(complete));
-    return tools::WriteTextFile(tools::JoinPath(dir, "rml.json"), root.Dump());
+    return tools::WriteTextFile(paths.VersionDir(id) + "/rml.json", root.Dump());
 }
 
 bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string& error) const {
     const std::string selected = version_.Selected();
-    const std::string version_dir = version_.VersionDir(selected);
-    const std::string natives_dir = tools::JoinPath(version_dir, selected + "-natives");
-    const std::string libraries_root = tools::JoinPath(version_.GameDir(), "libraries");
+    const Directory& paths = version_.Paths();
+    const std::string natives_dir = paths.NativesDir(selected);
+    const std::string libraries_root = paths.LibrariesRoot();
 
     bool any = false;
     for (const auto& library : detail.libraries) {
@@ -231,7 +228,7 @@ bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string&
 }
 
 void Version::ApplyDefaults(const std::string& game_dir) {
-    const std::string path = tools::JoinPath(game_dir, "options.txt");
+    const std::string path = Directory(game_dir).GameFile("options.txt");
     const std::string text = tools::ReadTextFile(path);
 
     // 新装：直接给一份最小配置，游戏自己会补全其余项
@@ -264,10 +261,10 @@ void Version::ApplyDefaults(const std::string& game_dir) {
 
 bool Version::WriteVersionJson(const std::string& game_dir, const std::string& id,
                                const std::string& json, std::string& error) {
-    const std::string version_dir =
-        tools::JoinPath(tools::JoinPath(game_dir, "versions"), id);
+    const Directory paths(game_dir);
+    const std::string version_dir = paths.VersionDir(id);
     if (!tools::EnsureDir(version_dir, error)) return false;
-    const std::string path = tools::JoinPath(version_dir, id + ".json");
+    const std::string path = paths.VersionJson(id);
     if (!tools::WriteTextFile(path, json)) {
         error = "写入失败: " + path;
         return false;

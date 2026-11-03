@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
 #ifdef _WIN32
@@ -228,7 +229,7 @@ const Environment::Java* Environment::Find(const std::string& path) const {
     return nullptr;
 }
 
-std::string Environment::ManagedRoot() { return tools::JoinPath(tools::DataRoot(), "runtimes"); }
+std::string Environment::ManagedRoot() { return Directory::RuntimesRoot(); }
 
 void Environment::Refresh() {
     javas_.clear();

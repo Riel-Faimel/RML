@@ -13,6 +13,8 @@ src/
     Bridge.*             应用层：把模块能力暴露给 QML
     ServerBridge.*       应用层：服务器页专用桥
     tools/               工具模块（唯一允许自由函数的模块）
+    directory/           目录管理模块：数据根 / 游戏根下的全部路径
+      Directory.h        其他模块统一从这里取 versions/libraries/assets/servers 等路径
     launch/              启动模块
       Launch.h           组合：Version + Environment + Starter + Download
       Version/           版本探测与 json 合并
@@ -73,6 +75,8 @@ class Fabric  : public Flow<Fabric>  { ... };
 
 ## 4. 文件系统
 
+- 项目目录（数据根、游戏根、versions/libraries/assets/servers、RML 的 cache/tmp/logs 等）
+  只从 `Directory` 模块取，其他模块不再自己拼路径
 - 全部用 `tools::ToPath(text)` 把 UTF-8 字符串转成 `std::filesystem::path`
 - **不要直接用 `std::filesystem::u8path`**，它在 C++20 已弃用，GCC 15 会报 `-Wdeprecated-declarations`
 - 写文件前先 `tools::EnsureDir(parent)`；Windows 上目录不存在时 `CreateFile` 会直接失败

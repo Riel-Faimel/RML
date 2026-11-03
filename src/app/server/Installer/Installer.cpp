@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -170,7 +171,7 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
     if (!Prepare(id, name, "Fabric", mc_version, java_major, error)) return false;
 
     const std::string dir = versions_.VersionDir(id);
-    const std::string game_libraries = tools::JoinPath(versions_.GameDir(), "libraries");
+    const std::string game_libraries = Directory(versions_.GameDir()).LibrariesRoot();
 
     // 1) 原版 server.jar
     download::installer::Transfer::Task jar_task;

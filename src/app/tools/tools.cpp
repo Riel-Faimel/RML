@@ -1,3 +1,4 @@
+#include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
 #include <cctype>
@@ -28,7 +29,7 @@ std::string ToUtf8(const fs::path& path) {
 // 放 RML 数据目录而不是 %TEMP%，避免受限环境里子进程不能写系统临时目录。
 std::string TempBodyPath() {
     static std::atomic<unsigned> counter{0};
-    const std::string dir = tools::JoinPath(tools::DataRoot(), "tmp");
+    const std::string dir = Directory::TempRoot();
     std::string error;
     tools::EnsureDir(dir, error);
 #ifdef _WIN32
@@ -148,17 +149,6 @@ std::vector<std::string> ListFiles(const std::string& path) {
         if (entry.is_regular_file()) out.push_back(ToUtf8(entry.path().filename()));
     }
     return out;
-}
-
-std::string DataRoot() {
-#ifdef _WIN32
-    char buffer[MAX_PATH * 2];
-    DWORD length = GetEnvironmentVariableA("APPDATA", buffer, sizeof(buffer));
-    if (length > 0 && length < sizeof(buffer)) {
-        return std::string(buffer, length) + "\\RML";
-    }
-#endif
-    return ".";
 }
 
 bool HttpGet(const std::string& url, std::string& out, std::string& error) {

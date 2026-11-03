@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -93,7 +94,7 @@ void Sources::Reload() {
 }
 
 bool Sources::Save(std::string& error) const {
-    if (!tools::EnsureDir(tools::DataRoot(), error)) return false;
+    if (!tools::EnsureDir(Directory::DataRoot(), error)) return false;
 
     Json::Value root = Json::Value::Object();
     Json::Value list = Json::Value::Array();

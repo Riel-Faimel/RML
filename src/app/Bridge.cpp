@@ -21,6 +21,7 @@
 #include <shellapi.h>
 #endif
 
+#include "app/directory/Directory.h"
 #include "app/download/Flow/Dispatcher.h"
 #include "app/server/Installer/Installer.h"
 #include "app/tools/Json.h"
@@ -36,6 +37,8 @@ QString LoaderFromMainClass(const std::string& main_class) {
     if (main_class.find("quilt") != std::string::npos) return QStringLiteral("Quilt");
     if (main_class.find("neoforge") != std::string::npos) return QStringLiteral("NeoForge");
     if (main_class.find("forge") != std::string::npos) return QStringLiteral("Forge");
+    // 1.16~1.20 的 Forge/NeoForge 都从 modlauncher 启动；没有 rml.json 的外部版本靠这个兜底
+    if (main_class.find("modlauncher") != std::string::npos) return QStringLiteral("Forge");
     return QStringLiteral("原版");
 }
 
@@ -50,7 +53,7 @@ QString SourceKindLabel(const std::string& kind) {
 
 // 背景图带时间戳，换图时 URL 会变，QML 的 Image 才会重新加载
 QString CustomBackgroundFile() {
-    QDir dir(FromStd(tools::DataRoot()));
+    QDir dir(FromStd(Directory::DataRoot()));
     const QStringList files =
         dir.entryList({QStringLiteral("background*.png")}, QDir::Files, QDir::Time);
     for (const QString& name : files) {
@@ -61,7 +64,7 @@ QString CustomBackgroundFile() {
 }
 
 void RemoveCustomBackgrounds(const QString& keep = QString()) {
-    QDir dir(FromStd(tools::DataRoot()));
+    QDir dir(FromStd(Directory::DataRoot()));
     for (const QString& name : dir.entryList({QStringLiteral("background*.png")}, QDir::Files)) {
         const QString path = dir.filePath(name);
         if (!keep.isEmpty() && path == keep) continue;
@@ -139,7 +142,7 @@ void Bridge::setBackground(const QString& path) {
         return;
     }
 
-    const QString data_root = FromStd(tools::DataRoot());
+    const QString data_root = FromStd(Directory::DataRoot());
     QDir().mkpath(data_root);
     const QString target =
         data_root + QStringLiteral("/background-%1.png")
@@ -182,7 +185,7 @@ void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& 
     root.Set("gc", Json::Value::String(gc_mode_.toStdString()));
     root.Set("jvmArgs", Json::Value::String(jvm_args_.toStdString()));
 
-    const std::string settings_path = tools::JoinPath(tools::DataRoot(), "settings.json");
+    const std::string settings_path = Directory::SettingsFile();
     tools::WriteTextFile(settings_path, root.Dump());
     emit changed();
 }
@@ -279,6 +282,7 @@ void Bridge::UpdateDetails() {
     QString origin = QStringLiteral("外部版本");
     for (const auto& entry : launch_.Versions().Entries()) {
         if (entry.id != selected_.toStdString()) continue;
+        if (!entry.loader.empty()) loader_ = FromStd(entry.loader);
         if (entry.managed) {
             origin = entry.loader.empty() ? QStringLiteral("RML 安装")
                                           : QStringLiteral("RML 安装 · %1").arg(FromStd(entry.loader));

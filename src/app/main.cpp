@@ -10,6 +10,7 @@
 #include <string>
 
 #include "app/Bridge.h"
+#include "app/directory/Directory.h"
 #include "app/ServerBridge.h"
 #include "app/launch/Launch.h"
 #include "app/server/Server.h"
@@ -25,21 +26,17 @@
 
 namespace {
 
-// 所有自己的数据都在 %APPDATA%\RML 下
-QString DataDir() {
-    const QString roaming = qEnvironmentVariable("APPDATA");
-    if (!roaming.isEmpty()) return roaming + QStringLiteral("/RML");
-    return QCoreApplication::applicationDirPath() + QStringLiteral("/data");
-}
+// 所有自己的数据都在 %APPDATA%\RML 下，路径统一由 Directory 决定
+QString DataDir() { return QString::fromStdString(Directory::DataRoot()); }
 
-QString LogDir() { return DataDir() + QStringLiteral("/logs"); }
+QString LogDir() { return QString::fromStdString(Directory::LauncherLogsRoot()); }
 
 #ifdef RML_DEBUG
 void DebugMessageHandler(QtMsgType type, const QMessageLogContext&, const QString& message) {
     static QMutex mutex;
     QMutexLocker locker(&mutex);
 
-    QFile file(LogDir() + QStringLiteral("/rml-debug.log"));
+    QFile file(QString::fromStdString(Directory::LauncherLogFile()));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) return;
 
     const char* level = "info";
@@ -120,13 +117,11 @@ int main(int argc, char** argv) {
     qInfo() << "启动，数据目录:" << DataDir();
 #endif
 
-    const QString settings_path = DataDir() + QStringLiteral("/settings.json");
+    const QString settings_path = QString::fromStdString(Directory::SettingsFile());
     Settings settings = LoadOrCreateSettings(settings_path);
     if (settings.game_dir.empty()) {
         // 默认指向原版启动器的位置：%APPDATA%\.minecraft
-        const QString roaming = qEnvironmentVariable("APPDATA");
-        settings.game_dir =
-            (roaming.isEmpty() ? DataDir() : roaming).toStdString() + "/.minecraft";
+        settings.game_dir = Directory::DefaultGameRoot();
     }
 
     Launch launch(settings.game_dir);

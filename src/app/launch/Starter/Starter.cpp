@@ -143,7 +143,7 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     if (!version_.LoadDetail(detail, error)) return false;
 
     const std::string game_dir = version_.GameDir();
-    const std::string version_dir = version_.VersionDir(version_.Selected());
+    const Directory& paths = version_.Paths();
 
     Command command;
     command.working_dir = game_dir;
@@ -175,7 +175,7 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
         }
     }
 
-    const std::string natives_dir = tools::JoinPath(version_dir, version_.Selected() + "-natives");
+    const std::string natives_dir = paths.NativesDir(version_.Selected());
     if (needs_natives) {
         const bool ready = tools::IsDirectory(natives_dir) && !tools::ListFiles(natives_dir).empty();
         if (!ready) missing.push_back({"natives 未解压", natives_dir});
@@ -190,7 +190,7 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
 
     // —— classpath ——
     std::vector<std::string> classpath;
-    const std::string libraries_root = tools::JoinPath(game_dir, "libraries");
+    const std::string libraries_root = paths.LibrariesRoot();
     int missing_libraries = 0;
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules, features)) continue;
@@ -208,13 +208,13 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     }
     if (missing_libraries > 0) {
         missing.push_back({"缺少 " + std::to_string(missing_libraries) + " 个库文件",
-                           tools::JoinPath(game_dir, "libraries")});
+                           paths.LibrariesRoot()});
     }
 
     if (!detail.client_jar.empty() && tools::PathExists(detail.client_jar)) {
         classpath.push_back(detail.client_jar);
     } else {
-        missing.push_back({"缺少客户端 jar", tools::JoinPath(version_dir, version_.Selected() + ".jar")});
+        missing.push_back({"缺少客户端 jar", paths.VersionJar(version_.Selected())});
     }
 
     if (!missing.empty()) {
@@ -238,11 +238,11 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     variables["version_name"] = detail.id;
     variables["version_type"] = "release";
     variables["game_directory"] = game_dir;
-    variables["assets_root"] = tools::JoinPath(game_dir, "assets");
+    variables["assets_root"] = paths.AssetsRoot();
     variables["assets_index_name"] = detail.asset_index;
     variables["natives_directory"] = natives_dir;
     // Forge 1.17+ / NeoForge 的 jvm 参数里会引用这两个
-    variables["library_directory"] = tools::JoinPath(game_dir, "libraries");
+    variables["library_directory"] = paths.LibrariesRoot();
     variables["launcher_name"] = options.launcher_name;
     variables["launcher_version"] = options.launcher_version;
     variables["classpath"] = classpath_text;
@@ -298,7 +298,7 @@ bool Starter::Start(const Command& command, std::string& error) {
 #ifdef _WIN32
     std::string command_line = command.preview();
 
-    const std::string log_dir = tools::JoinPath(command.working_dir, "logs");
+    const std::string log_dir = Directory(command.working_dir).GameLogsRoot();
     std::string log_path = tools::JoinPath(log_dir, "rml-launch.log");
 
     std::string log_dir_error;

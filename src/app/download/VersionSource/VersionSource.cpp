@@ -1,12 +1,13 @@
 #include "app/download/VersionSource/VersionSource.h"
 
+#include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
 namespace download {
 
 VersionSource::VersionSource()
-    : sources_(tools::JoinPath(tools::DataRoot(), "sources.json")),
-      cache_(tools::JoinPath(tools::DataRoot(), "cache")),
+    : sources_(Directory::SourcesFile()),
+      cache_(Directory::CacheRoot()),
       mojang_(cache_, sources_),
       loader_(cache_, sources_),
       forge_(cache_, sources_),

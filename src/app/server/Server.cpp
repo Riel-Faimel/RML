@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -78,7 +79,7 @@ std::string SanitizeDirName(const std::string& name) {
 }
 
 std::string InstanceDir(const std::string& game_dir, const server::Instance& instance) {
-    return tools::JoinPath(server::Catalog::ServersDir(game_dir), instance.dir);
+    return Directory(game_dir).ServerDir(instance.dir);
 }
 
 std::string PropertiesPath(const std::string& game_dir, const server::Instance& instance) {
@@ -546,7 +547,7 @@ bool Server::Start(int index, std::string& error) {
         std::string classpath;
         for (const auto& relative : installation->classpath) {
             const std::string full =
-                tools::JoinPath(tools::JoinPath(game_dir_, "libraries"), relative);
+                tools::JoinPath(Directory(game_dir_).LibrariesRoot(), relative);
             if (!tools::PathExists(full)) {
                 error = "Fabric 服务端依赖不存在: " + full;
                 return false;

@@ -37,6 +37,7 @@ endif
 
 CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/tools/tools.cpp \
+                src/app/directory/Directory.cpp \
                 src/app/launch/Version/Version.cpp \
                 src/app/launch/Environment/Environment.cpp \
                 src/app/launch/Starter/Starter.cpp \

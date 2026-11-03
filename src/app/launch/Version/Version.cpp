@@ -35,25 +35,23 @@ Json::Value MergeArguments(const Json::Value& parent, const Json::Value& child) 
 
 }  // namespace
 
-Version::Version(std::string game_dir) : game_dir_(std::move(game_dir)) { Probe(); }
+Version::Version(std::string game_dir) : paths_(std::move(game_dir)) { Probe(); }
 
-std::string Version::VersionDir(const std::string& id) const {
-    return tools::JoinPath(tools::JoinPath(game_dir_, "versions"), id);
-}
+std::string Version::VersionDir(const std::string& id) const { return paths_.VersionDir(id); }
 
 void Version::Probe() {
     entries_.clear();
-    const std::string versions_dir = tools::JoinPath(game_dir_, "versions");
+    const std::string versions_dir = paths_.VersionsRoot();
     if (!tools::IsDirectory(versions_dir)) return;
 
     for (const auto& id : tools::ListDirectories(versions_dir)) {
         Entry entry;
         entry.id = id;
         entry.name = id;
-        entry.directory = tools::JoinPath(versions_dir, id);
+        entry.directory = paths_.VersionDir(id);
 
         // 必须能解析出 json 才算版本，坏目录不列出来
-        const std::string json_path = tools::JoinPath(entry.directory, id + ".json");
+        const std::string json_path = paths_.VersionJson(id);
         entry.has_json = tools::PathExists(json_path);
         if (!entry.has_json) continue;
 
@@ -63,7 +61,7 @@ void Version::Probe() {
         if (!json.Parse(tools::ReadTextFile(json_path), version_root, parse_error)) continue;
         if (version_root["id"].AsString().empty()) continue;
 
-        entry.has_jar = tools::PathExists(tools::JoinPath(entry.directory, id + ".jar"));
+        entry.has_jar = tools::PathExists(paths_.VersionJar(id));
 
         // 托管标记：rml.json 里的 managed 才算 RML 装出来的，其余都算外部版本
         const std::string marker = tools::ReadTextFile(tools::JoinPath(entry.directory, "rml.json"));
@@ -131,8 +129,7 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
         return false;
     }
 
-    const std::string dir = VersionDir(id);
-    const std::string json_path = tools::JoinPath(dir, id + ".json");
+    const std::string json_path = paths_.VersionJson(id);
     const std::string text = tools::ReadTextFile(json_path);
     if (text.empty()) {
         error = "读不到版本描述: " + json_path;
@@ -174,7 +171,7 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
     }
     detail.legacy_arguments = root["minecraftArguments"].AsString();
 
-    const std::string own_jar = tools::JoinPath(dir, id + ".jar");
+    const std::string own_jar = paths_.VersionJar(id);
     if (tools::PathExists(own_jar)) detail.client_jar = own_jar;
 
     const Json::Value& libraries = root["libraries"];

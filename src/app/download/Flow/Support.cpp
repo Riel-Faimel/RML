@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/download/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
@@ -175,9 +176,7 @@ bool Support::DownloadFile(const std::string& url, const std::string& dest, cons
 
 bool Support::EnsureVanillaJson(const Context& context, const std::string& mc_version,
                                 std::string& error) {
-    const std::string path = tools::JoinPath(
-        tools::JoinPath(tools::JoinPath(context.versions.GameDir(), "versions"), mc_version),
-        mc_version + ".json");
+    const std::string path = Directory(context.versions.GameDir()).VersionJson(mc_version);
 
     if (tools::PathExists(path)) {
         Json::Value root;
@@ -214,13 +213,11 @@ bool Support::EnsureVanillaJson(const Context& context, const std::string& mc_ve
 
 bool Support::EnsureClientJar(const Context& context, const std::string& mc_version,
                               const Progress& progress, std::string& error) {
-    const std::string game_dir = context.versions.GameDir();
-    const std::string jar_path = tools::JoinPath(
-        tools::JoinPath(tools::JoinPath(game_dir, "versions"), mc_version), mc_version + ".jar");
+    const Directory paths(context.versions.GameDir());
+    const std::string jar_path = paths.VersionJar(mc_version);
     if (tools::PathExists(jar_path)) return true;
 
-    const std::string json_path = tools::JoinPath(
-        tools::JoinPath(tools::JoinPath(game_dir, "versions"), mc_version), mc_version + ".json");
+    const std::string json_path = paths.VersionJson(mc_version);
     Json::Value root;
     Json json;
     std::string parse_error;

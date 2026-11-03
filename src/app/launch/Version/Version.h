@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 
 namespace launch {
@@ -63,7 +64,8 @@ public:
 
     explicit Version(std::string game_dir);
 
-    const std::string& GameDir() const { return game_dir_; }
+    const std::string& GameDir() const { return paths_.GameRoot(); }
+    const Directory& Paths() const { return paths_; }
     const std::vector<Entry>& Entries() const { return entries_; }
 
     bool Select(const std::string& id);
@@ -85,7 +87,7 @@ private:
     bool LoadOne(const std::string& id, Detail& out, std::string& error, int depth) const;
     void Probe();
 
-    std::string game_dir_;
+    Directory paths_;
     std::vector<Entry> entries_;
     std::string selected_;
 };

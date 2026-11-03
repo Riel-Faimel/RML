@@ -5,6 +5,7 @@
 #include <set>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/download/Flow/Support.h"
 #include "app/tools/tools.h"
 
@@ -94,7 +95,8 @@ bool Processors::Run(const std::string& java, const std::string& game_dir,
                      const std::string& installer_jar, const std::string& mc_version,
                      const std::string& work_dir, const Json::Value& profile,
                      const Progress& progress, std::string& error) const {
-    const std::string libraries_root = tools::JoinPath(game_dir, "libraries");
+    const Directory paths(game_dir);
+    const std::string libraries_root = paths.LibrariesRoot();
     std::map<std::string, std::string> tokens;
 
     // —— data：工件路径 / 字面量 / 安装器里的文件 ——
@@ -136,8 +138,7 @@ bool Processors::Run(const std::string& java, const std::string& game_dir,
     }
 
     tokens["SIDE"] = "client";
-    tokens["MINECRAFT_JAR"] = tools::JoinPath(
-        tools::JoinPath(tools::JoinPath(game_dir, "versions"), mc_version), mc_version + ".jar");
+    tokens["MINECRAFT_JAR"] = paths.VersionJar(mc_version);
     tokens["MINECRAFT_VERSION"] = mc_version;
     tokens["ROOT"] = game_dir;
     tokens["INSTALLER"] = installer_jar;

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <utility>
 
+#include "app/directory/Directory.h"
 #include "app/server/Runner/Runner.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
@@ -25,16 +26,14 @@ bool IsAbsolutePath(const std::string& path) {
 Catalog::Catalog(std::string game_dir) : game_dir_(std::move(game_dir)) {}
 
 std::string Catalog::ServersDir(const std::string& game_dir) {
-    return tools::JoinPath(game_dir, "servers");
+    return Directory(game_dir).ServersRoot();
 }
 
 std::string Catalog::InstallationsDir(const std::string& game_dir) {
-    return tools::JoinPath(game_dir, "versions");
+    return Directory(game_dir).VersionsRoot();
 }
 
-std::string Catalog::ConfigPath() {
-    return tools::JoinPath(tools::DataRoot(), "servers.json");
-}
+std::string Catalog::ConfigPath() { return Directory::ServersFile(); }
 
 void Catalog::Reload() {
     ScanInstallations();
@@ -146,7 +145,7 @@ int Catalog::IndexOf(const std::string& dir) const {
 
 bool Catalog::Save(std::string& error) const {
     std::string dir_error;
-    if (!tools::EnsureDir(tools::DataRoot(), dir_error)) {
+    if (!tools::EnsureDir(Directory::DataRoot(), dir_error)) {
         error = dir_error;
         return false;
     }

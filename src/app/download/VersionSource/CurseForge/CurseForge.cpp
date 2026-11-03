@@ -1,5 +1,6 @@
 #include "app/download/VersionSource/CurseForge/CurseForge.h"
 
+#include "app/directory/Directory.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -36,7 +37,7 @@ std::vector<std::string> AuthHeaders(const std::string& key) {
 }  // namespace
 
 std::string CurseForge::ApiKey() {
-    const std::string path = tools::JoinPath(tools::DataRoot(), "curseforge.key");
+    const std::string path = Directory::DataFile("curseforge.key");
     std::string text = tools::ReadTextFile(path);
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) {
         text.pop_back();

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/download/Flow/Processors.h"
 #include "app/download/Flow/Support.h"
 #include "app/download/Installer/Version/Version.h"
@@ -45,9 +46,7 @@ bool CopyFile(const std::string& from, const std::string& to, std::string& error
 
 bool PickJava(const Context& context, const std::string& mc_version, std::string& java,
               std::string& error) {
-    const std::string json_path = tools::JoinPath(
-        tools::JoinPath(tools::JoinPath(context.versions.GameDir(), "versions"), mc_version),
-        mc_version + ".json");
+    const std::string json_path = Directory(context.versions.GameDir()).VersionJson(mc_version);
 
     int major = 8;
     Json::Value root;
@@ -136,10 +135,10 @@ bool Profile::Install(const Context& context, const Request& request, const std:
                       const std::string& maven_version, const std::string& installer_url,
                       const Progress& progress, Outcome& outcome, std::string& error) {
     const std::string game_dir = request.game_dir;
-    const std::string libraries_root = tools::JoinPath(game_dir, "libraries");
-    const std::string cache_dir = tools::JoinPath(tools::DataRoot(), "cache/installers");
-    const std::string temp_root = tools::JoinPath(
-        tools::JoinPath(tools::DataRoot(), "tmp"), SafeName(loader) + "-" + SafeName(maven_version));
+    const Directory paths(game_dir);
+    const std::string libraries_root = paths.LibrariesRoot();
+    const std::string cache_dir = Directory::InstallerCacheDir();
+    const std::string temp_root = Directory::TempFile(SafeName(loader) + "-" + SafeName(maven_version));
 
     std::string dir_error;
     if (!tools::EnsureDir(cache_dir, dir_error) || !tools::EnsureDir(temp_root, dir_error)) {

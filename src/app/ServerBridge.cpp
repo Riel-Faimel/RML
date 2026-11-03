@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
 ServerBridge::ServerBridge(Server& server, QObject* parent)
@@ -203,7 +204,7 @@ void ServerBridge::openFolder() {
     const auto* instance = Current();
     if (instance == nullptr) return;
     const QString path = QString::fromStdString(
-        tools::JoinPath(tools::JoinPath(server_.GameDir(), "servers"), instance->dir));
+        Directory(server_.GameDir()).ServerDir(instance->dir));
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
