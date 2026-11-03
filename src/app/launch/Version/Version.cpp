@@ -35,62 +35,12 @@ Json::Value MergeArguments(const Json::Value& parent, const Json::Value& child) 
 
 }  // namespace
 
-Version::Version(std::string game_dir) : paths_(std::move(game_dir)) { Probe(); }
+Version::Version(std::string game_dir) : paths_(std::move(game_dir)) { Refresh(); }
 
 std::string Version::VersionDir(const std::string& id) const { return paths_.VersionDir(id); }
 
-void Version::Probe() {
-    entries_.clear();
-    const std::string versions_dir = paths_.VersionsRoot();
-    if (!tools::IsDirectory(versions_dir)) return;
-
-    for (const auto& id : tools::ListDirectories(versions_dir)) {
-        // 被 Forge/NeoForge 依赖的原版底座只作为内部文件，不再作为独立版本出现
-        if (paths_.IsDependencyVersion(id)) continue;
-
-        Entry entry;
-        entry.id = id;
-        entry.name = id;
-        entry.directory = paths_.VersionDir(id);
-
-        // 必须能解析出 json 才算版本，坏目录不列出来
-        const std::string json_path = paths_.VersionJson(id);
-        entry.has_json = tools::PathExists(json_path);
-        if (!entry.has_json) continue;
-
-        Json::Value version_root;
-        Json json;
-        std::string parse_error;
-        if (!json.Parse(tools::ReadTextFile(json_path), version_root, parse_error)) continue;
-        if (version_root["id"].AsString().empty()) continue;
-
-        entry.has_jar = tools::PathExists(paths_.VersionJar(id));
-
-        // 托管标记：rml.json 里的 managed 才算 RML 装出来的，其余都算外部版本
-        const std::string marker = tools::ReadTextFile(tools::JoinPath(entry.directory, "rml.json"));
-        if (!marker.empty()) {
-            Json::Value root;
-            Json marker_json;
-            std::string error;
-            if (marker_json.Parse(marker, root, error)) {
-                entry.managed = root["managed"].AsBool(false);
-                entry.complete = root["complete"].AsBool(true);
-                entry.loader = root["loader"].AsString();
-                entry.is_server = root["kind"].AsString() == "server";
-                const std::string name = root["name"].AsString();
-                if (!name.empty()) entry.name = name;
-            }
-        }
-
-        entries_.push_back(std::move(entry));
-    }
-
-    std::sort(entries_.begin(), entries_.end(),
-              [](const Entry& a, const Entry& b) { return a.id < b.id; });
-}
-
 bool Version::Select(const std::string& id) {
-    for (const auto& entry : entries_) {
+    for (const auto& entry : Entries()) {
         if (entry.id == id) {
             selected_ = id;
             return true;
@@ -100,7 +50,7 @@ bool Version::Select(const std::string& id) {
     // 原版底座被 Forge/NeoForge 接管时，选中底座等价于选中对应的加载器版本
     const std::string owner = paths_.DependencyOwner(id);
     if (!owner.empty()) {
-        for (const auto& entry : entries_) {
+        for (const auto& entry : Entries()) {
             if (entry.id == owner) {
                 selected_ = owner;
                 return true;
@@ -124,14 +74,14 @@ bool Version::Rename(const std::string& id, const std::string& name) {
     root.Set("name", Json::Value::String(name));
     if (!tools::WriteTextFile(marker_path, root.Dump())) return false;
 
-    Probe();
+    paths_.RefreshVersions();
     Select(id);
     return true;
 }
 
 void Version::Refresh() {
     const std::string previous = selected_;
-    Probe();
+    paths_.RefreshVersions();
     if (!previous.empty()) {
         if (!Select(previous)) selected_.clear();
     }

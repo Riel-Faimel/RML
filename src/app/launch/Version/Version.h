@@ -12,19 +12,7 @@ namespace launch {
 
 class Version {
 public:
-    struct Entry {
-        std::string id;    // 目录名
-        std::string name;  // 显示名，来自 rml.json，缺省等于 id
-        std::string directory;
-        bool has_json = false;
-        bool has_jar = false;
-        // 由 rml.json 标记：外部放入的版本没有这个文件
-        bool managed = false;
-        bool complete = true;
-        std::string loader;
-        // kind == "server" 的服务端安装，不进启动页
-        bool is_server = false;
-    };
+    using Entry = Directory::VersionEntry;
 
     struct Classifier {
         std::string path;  // 相对 libraries/
@@ -66,7 +54,7 @@ public:
 
     const std::string& GameDir() const { return paths_.GameRoot(); }
     const Directory& Paths() const { return paths_; }
-    const std::vector<Entry>& Entries() const { return entries_; }
+    const std::vector<Entry>& Entries() const { return paths_.VisibleVersions(); }
 
     bool Select(const std::string& id);
 
@@ -85,10 +73,8 @@ public:
 
 private:
     bool LoadOne(const std::string& id, Detail& out, std::string& error, int depth) const;
-    void Probe();
 
     Directory paths_;
-    std::vector<Entry> entries_;
     std::string selected_;
 };
 

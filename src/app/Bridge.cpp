@@ -782,6 +782,7 @@ void Bridge::renameVersionAt(int index, const QString& name) {
 
 
 void Bridge::RefreshVersionList() {
+    launch_.Versions().Refresh();
     versions_.clear();
     version_ids_.clear();
     for (const auto& entry : launch_.Versions().Entries()) {

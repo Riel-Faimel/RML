@@ -1,11 +1,14 @@
 #include "app/directory/Directory.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
 #include <utility>
+
+#include "app/tools/Json.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,36 +27,22 @@ std::filesystem::path ToPath(const std::string& text) {
     return std::filesystem::path(std::u8string(text.begin(), text.end()));
 }
 
-std::string ReadSmallFile(const std::string& path) {
-    std::ifstream stream(ToPath(path), std::ios::binary);
-    if (!stream) return {};
-    return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-}
-
-bool JsonBoolIsTrue(const std::string& text, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = text.find(needle);
-    while (pos != std::string::npos) {
-        size_t colon = text.find(':', pos + needle.size());
-        if (colon == std::string::npos) return false;
-        size_t value = colon + 1;
-        while (value < text.size() &&
-               (text[value] == ' ' || text[value] == '\t' || text[value] == '\r' ||
-                text[value] == '\n')) {
-            ++value;
-        }
-        if (text.compare(value, 4, "true") == 0) return true;
-        pos = text.find(needle, pos + needle.size());
-    }
-    return false;
-}
-
 std::string BaseOfLoaderVersion(const std::string& id) {
     for (const char* suffix : {"-forge-", "-neoforge-"}) {
         const size_t pos = id.find(suffix);
         if (pos != std::string::npos && pos > 0) return id.substr(0, pos);
     }
     return {};
+}
+
+bool ReadJsonFile(const std::string& path, Json::Value& out) {
+    std::ifstream stream(ToPath(path), std::ios::binary);
+    if (!stream) return false;
+    const std::string text((std::istreambuf_iterator<char>(stream)),
+                           std::istreambuf_iterator<char>());
+    Json json;
+    std::string error;
+    return !text.empty() && json.Parse(text, out, error);
 }
 
 }  // namespace
@@ -86,36 +75,86 @@ std::string Directory::NativesDir(const std::string& id) const {
     return Join(VersionDir(id), id + "-natives");
 }
 
-std::string Directory::DependencyOwner(const std::string& id) const {
-    if (id.empty()) return {};
-    const std::string base = BaseOfLoaderVersion(id);
-    if (!base.empty() || !std::filesystem::is_directory(ToPath(VersionDir(id)))) return {};
+void Directory::RefreshVersions() {
+    versions_.clear();
+    visible_.clear();
+    dependency_owners_.clear();
 
-    std::map<std::string, std::string> owners;
     std::error_code ec;
+    std::vector<std::string> ids;
     for (const auto& entry : std::filesystem::directory_iterator(ToPath(VersionsRoot()), ec)) {
         if (ec || !entry.is_directory()) continue;
         const auto name = entry.path().filename().u8string();
-        const std::string owner(name.begin(), name.end());
-        if (BaseOfLoaderVersion(owner).empty()) continue;
+        ids.emplace_back(name.begin(), name.end());
+    }
+    std::sort(ids.begin(), ids.end());
 
-        const std::string marker = ReadSmallFile(VersionDir(owner) + "/rml.json");
-        if (!JsonBoolIsTrue(marker, "managed") || !JsonBoolIsTrue(marker, "complete")) continue;
+    for (const auto& id : ids) {
+        VersionEntry version;
+        version.id = id;
+        version.name = id;
+        version.directory = VersionDir(id);
+        version.has_json = std::filesystem::is_regular_file(ToPath(VersionJson(id)));
+        if (!version.has_json) continue;
 
-        const std::string owner_base = BaseOfLoaderVersion(owner);
-        if (owner_base.empty()) continue;
-        if (!std::filesystem::is_regular_file(ToPath(VersionJson(owner_base)))) continue;
+        Json::Value version_root;
+        if (!ReadJsonFile(VersionJson(id), version_root)) continue;
+        if (version_root["id"].AsString().empty()) continue;
 
-        auto found = owners.find(owner_base);
-        if (found == owners.end() || owner > found->second) owners[owner_base] = owner;
+        version.has_jar = std::filesystem::is_regular_file(ToPath(VersionJar(id)));
+
+        Json::Value marker;
+        version.user_installed = true;
+        if (ReadJsonFile(version.directory + "/rml.json", marker)) {
+            version.managed = marker["managed"].AsBool(false);
+            version.complete = marker["complete"].AsBool(true);
+            version.loader = marker["loader"].AsString();
+            version.is_server = marker["kind"].AsString() == "server";
+            if (marker.Find("user") != nullptr) {
+                version.user_installed = marker["user"].AsBool(true);
+            }
+            const std::string name = marker["name"].AsString();
+            if (!name.empty()) version.name = name;
+        }
+
+        versions_.push_back(std::move(version));
     }
 
-    const auto found = owners.find(id);
-    return found == owners.end() ? std::string() : found->second;
+    // Forge/NeoForge 的底座：默认它只是加载器的内部依赖；
+    // 只有底座显式标记为 user 时，才保留成用户可独立启动的版本。
+    std::map<std::string, std::string> owners;
+    for (const auto& version : versions_) {
+        if (!version.managed || !version.complete || version.is_server) continue;
+        const std::string base = BaseOfLoaderVersion(version.id);
+        if (base.empty()) continue;
+        const auto base_it = std::find_if(versions_.begin(), versions_.end(),
+                                          [&base](const VersionEntry& item) {
+                                              return item.id == base;
+                                          });
+        if (base_it == versions_.end()) continue;
+
+        auto found = owners.find(base);
+        if (found == owners.end() || version.id > found->second) owners[base] = version.id;
+    }
+
+    for (auto& version : versions_) {
+        const auto owner = owners.find(version.id);
+        if (owner != owners.end() && !version.user_installed) {
+            version.dependency = true;
+            dependency_owners_[version.id] = owner->second;
+        } else {
+            visible_.push_back(version);
+        }
+    }
+}
+
+std::string Directory::DependencyOwner(const std::string& id) const {
+    const auto found = dependency_owners_.find(id);
+    return found == dependency_owners_.end() ? std::string() : found->second;
 }
 
 bool Directory::IsDependencyVersion(const std::string& id) const {
-    return !DependencyOwner(id).empty();
+    return dependency_owners_.find(id) != dependency_owners_.end();
 }
 
 std::string Directory::LibrariesRoot() const { return Join(game_root_, "libraries"); }

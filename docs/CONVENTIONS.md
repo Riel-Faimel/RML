@@ -77,8 +77,9 @@ class Fabric  : public Flow<Fabric>  { ... };
 
 - 项目目录（数据根、游戏根、versions/libraries/assets/servers、RML 的 cache/tmp/logs 等）
   只从 `Directory` 模块取，其他模块不再自己拼路径
-- 被 Forge/NeoForge 版本依赖的原版底座由 `Directory` 识别并隐藏，启动页只保留加载器版本；
-  选中底座时自动映射到对应的加载器版本
+- 版本目录由 `Directory::RefreshVersions()` 扫描，`Versions()` / `VisibleVersions()` 返回容器引用；
+  `launch::Version` 持有 `Directory`，读的是同一份容器，刷新后立即反映
+- Forge/NeoForge 的底座默认标成依赖并隐藏；Vanilla 安装会把 `user=true`，用户自己装的原版仍然显示
 - 全部用 `tools::ToPath(text)` 把 UTF-8 字符串转成 `std::filesystem::path`
 - **不要直接用 `std::filesystem::u8path`**，它在 C++20 已弃用，GCC 15 会报 `-Wdeprecated-declarations`
 - 写文件前先 `tools::EnsureDir(parent)`；Windows 上目录不存在时 `CreateFile` 会直接失败

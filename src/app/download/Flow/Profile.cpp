@@ -139,6 +139,7 @@ bool Profile::Install(const Context& context, const Request& request, const std:
     const std::string libraries_root = paths.LibrariesRoot();
     const std::string cache_dir = Directory::InstallerCacheDir();
     const std::string temp_root = Directory::TempFile(SafeName(loader) + "-" + SafeName(maven_version));
+    const bool base_preexisting = tools::PathExists(paths.VersionJson(request.mc_version));
 
     std::string dir_error;
     if (!tools::EnsureDir(cache_dir, dir_error) || !tools::EnsureDir(temp_root, dir_error)) {
@@ -290,7 +291,10 @@ bool Profile::Install(const Context& context, const Request& request, const std:
     }
 
     installer::Version::WriteMarker(game_dir, version_id, loader, true);
-    installer::Version::WriteMarker(game_dir, request.mc_version, "原版", true);
+    // 只有安装器顺手创建的原版底座才标成依赖；用户原有的原版不动，保持可见
+    if (!base_preexisting) {
+        installer::Version::WriteMarker(game_dir, request.mc_version, "原版", true, false, true);
+    }
 
     outcome.version_id = version_id;
     outcome.loader_version = maven_version;

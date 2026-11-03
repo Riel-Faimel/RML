@@ -169,7 +169,8 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
 }
 
 bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
-                          const std::string& loader, bool complete) {
+                          const std::string& loader, bool complete, bool user_installed,
+                          bool write_user) {
     const Directory paths(game_dir);
     const std::string dir = paths.VersionDir(id);
     std::string error;
@@ -179,6 +180,7 @@ bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
     root.Set("managed", Json::Value::Bool(true));
     root.Set("loader", Json::Value::String(loader));
     root.Set("complete", Json::Value::Bool(complete));
+    if (write_user) root.Set("user", Json::Value::Bool(user_installed));
     return tools::WriteTextFile(paths.VersionDir(id) + "/rml.json", root.Dump());
 }
 

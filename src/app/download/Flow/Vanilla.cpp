@@ -31,7 +31,7 @@ bool Vanilla::RunImpl(const Context& context, const Request& request, const Prog
         return false;
     }
 
-    installer::Version::WriteMarker(request.game_dir, request.mc_version, "原版", true);
+    installer::Version::WriteMarker(request.game_dir, request.mc_version, "原版", true, true, true);
     outcome.version_id = request.mc_version;
     return true;
 }

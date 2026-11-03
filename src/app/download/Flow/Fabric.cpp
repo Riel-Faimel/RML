@@ -1,5 +1,6 @@
 #include "app/download/Flow/Fabric.h"
 
+#include "app/directory/Directory.h"
 #include "app/download/Flow/Support.h"
 #include "app/download/Installer/Version/Version.h"
 #include "app/tools/Json.h"
@@ -57,7 +58,9 @@ bool Fabric::RunImpl(const Context& context, const Request& request, const Progr
     }
 
     installer::Version::WriteMarker(request.game_dir, version_id, "Fabric", true);
-    installer::Version::WriteMarker(request.game_dir, mc_version, "原版", true);
+    if (!tools::PathExists(Directory(request.game_dir).VersionDir(mc_version) + "/rml.json")) {
+        installer::Version::WriteMarker(request.game_dir, mc_version, "原版", true, false, true);
+    }
 
     outcome.version_id = version_id;
     outcome.loader_version = loader_version;
