@@ -17,6 +17,11 @@ public:
     std::string VersionJar(const std::string& id) const;
     std::string NativesDir(const std::string& id) const;
 
+    // 加载器版本依赖的原版底座（例如 1.16.5-forge-... 依赖 1.16.5）。
+    // 返回空表示 id 不是被依赖的底座；否则返回应该取而代之的加载器版本 id。
+    std::string DependencyOwner(const std::string& id) const;
+    bool IsDependencyVersion(const std::string& id) const;
+
     std::string LibrariesRoot() const;
     std::string AssetsRoot() const;
     std::string AssetIndexesRoot() const;

@@ -45,6 +45,9 @@ void Version::Probe() {
     if (!tools::IsDirectory(versions_dir)) return;
 
     for (const auto& id : tools::ListDirectories(versions_dir)) {
+        // 被 Forge/NeoForge 依赖的原版底座只作为内部文件，不再作为独立版本出现
+        if (paths_.IsDependencyVersion(id)) continue;
+
         Entry entry;
         entry.id = id;
         entry.name = id;
@@ -91,6 +94,17 @@ bool Version::Select(const std::string& id) {
         if (entry.id == id) {
             selected_ = id;
             return true;
+        }
+    }
+
+    // 原版底座被 Forge/NeoForge 接管时，选中底座等价于选中对应的加载器版本
+    const std::string owner = paths_.DependencyOwner(id);
+    if (!owner.empty()) {
+        for (const auto& entry : entries_) {
+            if (entry.id == owner) {
+                selected_ = owner;
+                return true;
+            }
         }
     }
     return false;

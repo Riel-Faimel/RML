@@ -1,6 +1,10 @@
 #include "app/directory/Directory.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
 #include <utility>
 
 #ifdef _WIN32
@@ -14,6 +18,42 @@ std::string Join(const std::string& parent, const std::string& child) {
     if (child.empty()) return parent;
     if (parent.back() == '/' || parent.back() == '\\') return parent + child;
     return parent + "/" + child;
+}
+
+std::filesystem::path ToPath(const std::string& text) {
+    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+}
+
+std::string ReadSmallFile(const std::string& path) {
+    std::ifstream stream(ToPath(path), std::ios::binary);
+    if (!stream) return {};
+    return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+}
+
+bool JsonBoolIsTrue(const std::string& text, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    size_t pos = text.find(needle);
+    while (pos != std::string::npos) {
+        size_t colon = text.find(':', pos + needle.size());
+        if (colon == std::string::npos) return false;
+        size_t value = colon + 1;
+        while (value < text.size() &&
+               (text[value] == ' ' || text[value] == '\t' || text[value] == '\r' ||
+                text[value] == '\n')) {
+            ++value;
+        }
+        if (text.compare(value, 4, "true") == 0) return true;
+        pos = text.find(needle, pos + needle.size());
+    }
+    return false;
+}
+
+std::string BaseOfLoaderVersion(const std::string& id) {
+    for (const char* suffix : {"-forge-", "-neoforge-"}) {
+        const size_t pos = id.find(suffix);
+        if (pos != std::string::npos && pos > 0) return id.substr(0, pos);
+    }
+    return {};
 }
 
 }  // namespace
@@ -44,6 +84,38 @@ std::string Directory::VersionJar(const std::string& id) const {
 
 std::string Directory::NativesDir(const std::string& id) const {
     return Join(VersionDir(id), id + "-natives");
+}
+
+std::string Directory::DependencyOwner(const std::string& id) const {
+    if (id.empty()) return {};
+    const std::string base = BaseOfLoaderVersion(id);
+    if (!base.empty() || !std::filesystem::is_directory(ToPath(VersionDir(id)))) return {};
+
+    std::map<std::string, std::string> owners;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(ToPath(VersionsRoot()), ec)) {
+        if (ec || !entry.is_directory()) continue;
+        const auto name = entry.path().filename().u8string();
+        const std::string owner(name.begin(), name.end());
+        if (BaseOfLoaderVersion(owner).empty()) continue;
+
+        const std::string marker = ReadSmallFile(VersionDir(owner) + "/rml.json");
+        if (!JsonBoolIsTrue(marker, "managed") || !JsonBoolIsTrue(marker, "complete")) continue;
+
+        const std::string owner_base = BaseOfLoaderVersion(owner);
+        if (owner_base.empty()) continue;
+        if (!std::filesystem::is_regular_file(ToPath(VersionJson(owner_base)))) continue;
+
+        auto found = owners.find(owner_base);
+        if (found == owners.end() || owner > found->second) owners[owner_base] = owner;
+    }
+
+    const auto found = owners.find(id);
+    return found == owners.end() ? std::string() : found->second;
+}
+
+bool Directory::IsDependencyVersion(const std::string& id) const {
+    return !DependencyOwner(id).empty();
 }
 
 std::string Directory::LibrariesRoot() const { return Join(game_root_, "libraries"); }
