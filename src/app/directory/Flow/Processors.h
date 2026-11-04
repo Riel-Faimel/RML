@@ -4,10 +4,10 @@
 
 #include <string>
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 #include "app/tools/Json.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class Processors {
@@ -28,4 +28,4 @@ private:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

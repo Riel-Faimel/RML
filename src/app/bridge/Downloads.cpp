@@ -5,7 +5,8 @@
 #include <thread>
 #include <vector>
 
-#include "app/download/Flow/Dispatcher.h"
+#include "app/directory/Directory.h"
+#include "app/directory/Flow/Dispatcher.h"
 #include "app/server/Installer/Installer.h"
 #include "app/tools/tools.h"
 
@@ -162,11 +163,11 @@ void BridgeDownloads::InstallGame(int kind, int index, const QString& loader,
     download_changed_();
 
     std::thread([this, mc_version, loader_name, loader_version] {
-        download::flow::Context context{launch_.Versions(), launch_.Tools(),
+        directory::flow::Context context{launch_.Versions(), launch_.Tools(),
                                         launch_.Downloader().Sources(),
                                         launch_.Downloader().Installers()};
 
-        download::flow::Request request;
+        directory::flow::Request request;
         request.game_dir = launch_.Versions().GameDir();
         request.mc_version = mc_version;
         request.loader = loader_name;
@@ -187,9 +188,10 @@ void BridgeDownloads::InstallGame(int kind, int index, const QString& loader,
                 Qt::QueuedConnection);
         };
 
-        download::flow::Outcome outcome;
+        directory::flow::Outcome outcome;
         std::string error;
-        const bool ok = download::flow::Dispatcher().Run(context, request, progress, outcome, error);
+        const Directory paths(launch_.Versions().GameDir());
+        const bool ok = paths.Install(loader_name, context, request, progress, outcome, error);
 
         QMetaObject::invokeMethod(
             context_,

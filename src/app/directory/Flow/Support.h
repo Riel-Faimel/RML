@@ -5,9 +5,9 @@
 #include <map>
 #include <string>
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class Support {
@@ -48,4 +48,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

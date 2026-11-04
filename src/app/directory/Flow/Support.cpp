@@ -1,16 +1,16 @@
 #include "app/network/Network.h"
-#include "app/download/Flow/Support.h"
+#include "app/directory/Flow/Support.h"
 
 #include <cctype>
 #include <filesystem>
 #include <vector>
 
 #include "app/directory/Directory.h"
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 namespace {
@@ -189,7 +189,7 @@ bool Support::EnsureVanillaJson(const Context& context, const std::string& mc_ve
         }
     }
 
-    std::vector<versionsource::Mojang::Entry> entries;
+    std::vector<download::versionsource::Mojang::Entry> entries;
     if (!context.sources.Game().List(entries, error)) return false;
 
     std::string url;
@@ -291,4 +291,4 @@ bool Support::ReadMainClass(const std::string& jar, const std::string& work_dir,
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

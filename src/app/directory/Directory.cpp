@@ -1,4 +1,5 @@
 #include "app/directory/Directory.h"
+#include "app/directory/Flow/Dispatcher.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -56,6 +57,77 @@ std::string Directory::Join(const std::string& parent, const std::string& child)
 
 std::string Directory::GameFile(const std::string& name) const {
     return Join(game_root_, name);
+}
+
+Directory::InstallTarget Directory::Install(const std::string& installer_type_id,
+                                            const std::string& version_id) const {
+    InstallTarget target;
+    target.installer_type_id = tools::ToLower(installer_type_id);
+    if (target.installer_type_id == "原版") target.installer_type_id = "vanilla";
+    target.version_id = version_id;
+    target.game_root = game_root_;
+    target.version_dir = VersionDir(version_id);
+    target.version_json = VersionJson(version_id);
+    target.client_jar = VersionJar(version_id);
+    target.natives_dir = NativesDir(version_id);
+    target.libraries_root = LibrariesRoot();
+    target.assets_root = AssetsRoot();
+    target.asset_indexes_root = AssetIndexesRoot();
+    target.asset_objects_root = AssetObjectsRoot();
+    target.mods_root = ModsRoot();
+    target.resourcepacks_root = ResourcePacksRoot();
+    target.shaderpacks_root = ShaderPacksRoot();
+    target.datapacks_root = DatapacksRoot();
+    target.saves_root = SavesRoot();
+    return target;
+}
+
+bool Directory::Install(const std::string& installer_type_id,
+                        const directory::flow::Context& context,
+                        const directory::flow::Request& request,
+                        const std::function<void(const std::string&, int, int)>& progress,
+                        directory::flow::Outcome& outcome, std::string& error) const {
+    std::string loader = tools::ToLower(installer_type_id);
+    if (loader == "vanilla" || loader == "原版") loader = "原版";
+    else if (loader == "fabric") loader = "Fabric";
+    else if (loader == "forge") loader = "Forge";
+    else if (loader == "neoforge") loader = "NeoForge";
+
+    directory::flow::Request actual = request;
+    actual.loader = loader;
+    return directory::flow::Dispatcher().Run(context, actual, progress, outcome, error);
+}
+
+std::string Directory::InstallTarget::VersionFile(const std::string& relative) const {    return tools::JoinPath(version_dir, relative);
+}
+
+std::string Directory::InstallTarget::Library(const std::string& relative) const {
+    return tools::JoinPath(libraries_root, relative);
+}
+
+std::string Directory::InstallTarget::AssetObject(const std::string& hash) const {
+    if (hash.size() < 2) return {};
+    return tools::JoinPath(tools::JoinPath(asset_objects_root, hash.substr(0, 2)), hash);
+}
+
+std::string Directory::InstallTarget::AssetIndex(const std::string& id) const {
+    return tools::JoinPath(asset_indexes_root, id + ".json");
+}
+
+std::string Directory::InstallTarget::RepositoryModSidecar(const std::string& file) const {
+    return tools::JoinPath(mods_root, file + ".rml.json");
+}
+
+std::string Directory::InstallTarget::Resourcepack(const std::string& file) const {
+    return tools::JoinPath(resourcepacks_root, file);
+}
+
+std::string Directory::InstallTarget::Shaderpack(const std::string& file) const {
+    return tools::JoinPath(shaderpacks_root, file);
+}
+
+std::string Directory::InstallTarget::Datapack(const std::string& file) const {
+    return tools::JoinPath(datapacks_root, file);
 }
 
 namespace {

@@ -2,10 +2,21 @@
 // 其他模块持有这里返回的容器引用，不复制、不自己拼路径。
 #pragma once
 
+#include <functional>
 #include <map>
 #include <string>
 #include <string_view>
 #include <vector>
+
+class Directory;
+
+namespace directory {
+namespace flow {
+struct Context;
+struct Request;
+struct Outcome;
+}  // namespace flow
+}  // namespace directory
 
 class Directory {
 public:
@@ -23,6 +34,47 @@ public:
         bool user_installed = false;
         bool dependency = false;  // Forge/NeoForge 的原版底座，不对外显示
     };
+
+    // 安装器只持有这个目标，不再自己拼 .minecraft 内部路径。
+    // installer_type_id 由调用者选择：vanilla / fabric / forge / neoforge。
+    struct InstallTarget {
+        std::string installer_type_id;
+        std::string version_id;
+        std::string game_root;
+        std::string version_dir;
+        std::string version_json;
+        std::string client_jar;
+        std::string natives_dir;
+        std::string libraries_root;
+        std::string assets_root;
+        std::string asset_indexes_root;
+        std::string asset_objects_root;
+        std::string mods_root;
+        std::string resourcepacks_root;
+        std::string shaderpacks_root;
+        std::string datapacks_root;
+        std::string saves_root;
+
+        std::string VersionFile(const std::string& relative) const;
+        std::string Library(const std::string& relative) const;
+        std::string AssetObject(const std::string& hash) const;
+        std::string AssetIndex(const std::string& id) const;
+        std::string RepositoryModSidecar(const std::string& file) const;
+        std::string Resourcepack(const std::string& file) const;
+        std::string Shaderpack(const std::string& file) const;
+        std::string Datapack(const std::string& file) const;
+    };
+
+    // 安装入口：调用者选安装器类型，Directory 决定这一版的目录布局。
+    InstallTarget Install(const std::string& installer_type_id,
+                          const std::string& version_id) const;
+
+    // 安装执行入口：调用者选安装器类型 ID，Directory 调用对应 Flow。
+    bool Install(const std::string& installer_type_id,
+                 const directory::flow::Context& context,
+                 const directory::flow::Request& request,
+                 const std::function<void(const std::string&, int, int)>& progress,
+                 directory::flow::Outcome& outcome, std::string& error) const;
 
     explicit Directory(std::string game_root);
 

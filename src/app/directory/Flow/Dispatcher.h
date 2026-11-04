@@ -2,9 +2,9 @@
 // 的地方，策略本身不写加载器分支。
 #pragma once
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class Dispatcher {
@@ -14,4 +14,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "app/directory/Directory.h"
-#include "app/download/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 #include "include/AccountProvider.h"
@@ -234,7 +234,7 @@ void Bridge::launchGame() {
         emit changed();
 
         std::thread([this, credentials, options, missing] {
-            download::installer::Transfer::Result report;
+            directory::installer::Transfer::Result report;
             std::string repair_error;
             auto progress = [this](const std::string& label, int done, int total) {
                 if (done != total && done % 32 != 0) return;

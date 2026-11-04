@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "app/download/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
 #include "app/launch/Version/Version.h"
 
-namespace download {
+namespace directory {
 namespace installer {
 
 class Version {
@@ -48,4 +48,4 @@ private:
 };
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

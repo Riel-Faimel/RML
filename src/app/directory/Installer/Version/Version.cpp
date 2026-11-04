@@ -1,4 +1,4 @@
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Installer/Version/Version.h"
 
 #include <filesystem>
 
@@ -6,7 +6,7 @@
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace installer {
 
 namespace {
@@ -37,19 +37,19 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
     (void)error;
     const Directory& paths = version_.Paths();
     const std::string selected = version_.Selected();
+    const Directory::InstallTarget target = paths.Install("vanilla", selected);
 
     if (!detail.client_url.empty()) {
         Transfer::Task task;
         task.url = detail.client_url;
         task.sha1 = detail.client_sha1;
         // 继承来的客户端 jar（Forge 继承原版）已经在原版目录里，别再拷一份到加载器目录
-        task.dest = detail.client_jar.empty() ? paths.VersionJar(selected) : detail.client_jar;
+        task.dest = detail.client_jar.empty() ? target.client_jar : detail.client_jar;
         task.label = selected + ".jar";
         task.size = detail.client_size;
         out.push_back(std::move(task));
     }
 
-    const std::string libraries_root = paths.LibrariesRoot();
     for (const auto& library : detail.libraries) {
         if (!MatchesRules(library.rules)) continue;
         std::string relative = library.path.empty() ? tools::MavenToPath(library.name) : library.path;
@@ -57,7 +57,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
             Transfer::Task task;
             task.url = library.url;
             task.sha1 = library.sha1;
-            task.dest = tools::JoinPath(libraries_root, relative);
+            task.dest = target.Library(relative);
             task.label = relative;
             task.size = library.size;
             out.push_back(std::move(task));
@@ -79,7 +79,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
         Transfer::Task task;
         task.url = file->second.url;
         task.sha1 = file->second.sha1;
-        task.dest = tools::JoinPath(libraries_root, file->second.path);
+        task.dest = target.Library(file->second.path);
         task.label = file->second.path;
         task.size = file->second.size;
         out.push_back(std::move(task));
@@ -89,7 +89,7 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
         Transfer::Task task;
         task.url = detail.asset_index_url;
         task.sha1 = detail.asset_index_sha1;
-        task.dest = paths.AssetIndexesRoot() + "/" + detail.asset_index + ".json";
+        task.dest = target.AssetIndex(detail.asset_index);
         task.label = "assets/indexes/" + detail.asset_index + ".json";
         out.push_back(std::move(task));
     }
@@ -99,7 +99,9 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
 bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                               std::vector<Transfer::Task>& out, std::string& error) const {
     const Directory paths(version_.GameDir());
-    const std::string index_path = paths.AssetIndexesRoot() + "/" + detail.asset_index + ".json";
+    const Directory::InstallTarget target =
+        paths.Install("vanilla", version_.Selected());
+    const std::string index_path = target.AssetIndex(detail.asset_index);
     const std::string text = Directory::ReadTextFile(index_path);
     if (text.empty()) {
         error = "读不到资源索引: " + index_path;
@@ -116,7 +118,6 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::
         return false;
     }
 
-    const std::string objects_root = paths.AssetObjectsRoot();
     const std::string base =
         assets_root.empty() ? "https://resources.download.minecraft.net" : assets_root;
     for (size_t i = 0; i < objects.Size(); ++i) {
@@ -127,7 +128,7 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::
         Transfer::Task task;
         task.url = tools::JoinPath(base, hash.substr(0, 2) + "/" + hash);
         task.sha1 = hash;
-        task.dest = tools::JoinPath(tools::JoinPath(objects_root, hash.substr(0, 2)), hash);
+        task.dest = target.AssetObject(hash);
         task.label = "assets/" + hash.substr(0, 2) + "/" + hash;
         task.size = object["size"].AsInt(0);
         out.push_back(std::move(task));
@@ -279,4 +280,4 @@ bool Version::WriteVersionJson(const std::string& game_dir, const std::string& i
 }
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "app/download/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
 #include "app/download/VersionSource/VersionSource.h"
 #include "app/launch/Environment/Environment.h"
 #include "app/launch/Version/Version.h"
@@ -13,11 +13,11 @@ namespace server {
 
 class Installer {
 public:
-    using Progress = download::installer::Transfer::Progress;
+    using Progress = directory::installer::Transfer::Progress;
 
     Installer(launch::Version& versions, launch::Environment& environment,
               download::VersionSource& sources,
-              download::installer::Transfer& transfer);
+              directory::installer::Transfer& transfer);
 
     bool Vanilla(const std::string& mc_version, const Progress& progress, std::string& version_id,
                  std::string& error) const;
@@ -33,7 +33,7 @@ private:
     launch::Version& versions_;
     launch::Environment& environment_;
     download::VersionSource& sources_;
-    download::installer::Transfer& transfer_;
+    directory::installer::Transfer& transfer_;
 };
 
 }  // namespace server

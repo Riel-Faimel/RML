@@ -1,9 +1,9 @@
 // Forge：从 promotions 挑版本 → 走 install_profile 的处理器流程。
 #pragma once
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class Forge : public Flow<Forge> {
@@ -13,4 +13,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

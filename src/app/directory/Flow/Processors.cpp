@@ -1,4 +1,4 @@
-#include "app/download/Flow/Processors.h"
+#include "app/directory/Flow/Processors.h"
 
 #include <filesystem>
 #include <map>
@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "app/directory/Directory.h"
-#include "app/download/Flow/Support.h"
+#include "app/directory/Flow/Support.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 namespace {
@@ -277,4 +277,4 @@ bool Processors::Run(const std::string& java, const std::string& game_dir,
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

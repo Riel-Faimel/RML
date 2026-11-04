@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "app/directory/Directory.h"
-#include "app/download/Installer/Placement/Placement.h"
-#include "app/download/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Placement/Placement.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -183,14 +183,14 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         }
 
         const auto& file = chosen->files.front();
-        download::installer::Placement::Kind placement_kind = download::installer::Placement::Kind::Mod;
-        if (kind == "shader") placement_kind = download::installer::Placement::Kind::Shaderpack;
-        if (kind == "resourcepack") placement_kind = download::installer::Placement::Kind::Resourcepack;
+        directory::installer::Placement::Kind placement_kind = directory::installer::Placement::Kind::Mod;
+        if (kind == "shader") placement_kind = directory::installer::Placement::Kind::Shaderpack;
+        if (kind == "resourcepack") placement_kind = directory::installer::Placement::Kind::Resourcepack;
 
         NetTask::Resource resource;
         resource.url = file.url;
         resource.sha1 = file.sha1;
-        resource.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
+        resource.dest = directory::installer::Placement::Resolve(instance_dir, placement_kind,
                                                                 file.filename, true);
         resource.label = file.filename;
         resource.size = file.size;

@@ -1,9 +1,9 @@
 // NeoForge：版本号从 maven metadata 里挑，安装流程和 Forge 一样走 install_profile。
 #pragma once
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class NeoForge : public Flow<NeoForge> {
@@ -13,4 +13,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

@@ -56,17 +56,17 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/download/VersionSource/Modrinth/Modrinth.cpp \
                 src/app/download/VersionSource/CurseForge/CurseForge.cpp \
                 src/app/download/VersionSource/VersionSource.cpp \
-                src/app/download/Installer/Transfer/Transfer.cpp \
-                src/app/download/Installer/Placement/Placement.cpp \
-                src/app/download/Installer/Version/Version.cpp \
-                src/app/download/Flow/Support.cpp \
-                src/app/download/Flow/Processors.cpp \
-                src/app/download/Flow/Profile.cpp \
-                src/app/download/Flow/Vanilla.cpp \
-                src/app/download/Flow/Fabric.cpp \
-                src/app/download/Flow/Forge.cpp \
-                src/app/download/Flow/NeoForge.cpp \
-                src/app/download/Flow/Dispatcher.cpp \
+                src/app/directory/Installer/Transfer/Transfer.cpp \
+                src/app/directory/Installer/Placement/Placement.cpp \
+                src/app/directory/Installer/Version/Version.cpp \
+                src/app/directory/Flow/Support.cpp \
+                src/app/directory/Flow/Processors.cpp \
+                src/app/directory/Flow/Profile.cpp \
+                src/app/directory/Flow/Vanilla.cpp \
+                src/app/directory/Flow/Fabric.cpp \
+                src/app/directory/Flow/Forge.cpp \
+                src/app/directory/Flow/NeoForge.cpp \
+                src/app/directory/Flow/Dispatcher.cpp \
                 src/app/server/Catalog/Catalog.cpp \
                 src/app/server/Runner/Runner.cpp \
                 src/app/server/Installer/Installer.cpp \

@@ -1,10 +1,10 @@
-#include "app/download/Flow/Vanilla.h"
+#include "app/directory/Flow/Vanilla.h"
 
-#include "app/download/Flow/Support.h"
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Flow/Support.h"
+#include "app/directory/Installer/Version/Version.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 bool Vanilla::RunImpl(const Context& context, const Request& request, const Progress& progress,
@@ -37,4 +37,4 @@ bool Vanilla::RunImpl(const Context& context, const Request& request, const Prog
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

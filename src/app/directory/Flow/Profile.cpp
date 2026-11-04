@@ -1,17 +1,17 @@
-#include "app/download/Flow/Profile.h"
+#include "app/directory/Flow/Profile.h"
 
 #include <cctype>
 #include <filesystem>
 #include <vector>
 
 #include "app/directory/Directory.h"
-#include "app/download/Flow/Processors.h"
-#include "app/download/Flow/Support.h"
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Flow/Processors.h"
+#include "app/directory/Flow/Support.h"
+#include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 namespace {
@@ -302,4 +302,4 @@ bool Profile::Install(const Context& context, const Request& request, const std:
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

@@ -1,9 +1,9 @@
 // Fabric：meta 直接给一份可用的版本 json（含 inheritsFrom），落盘后按普通版本补全。
 #pragma once
 
-#include "app/download/Flow/Flow.h"
+#include "app/directory/Flow/Flow.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 class Fabric : public Flow<Fabric> {
@@ -13,4 +13,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

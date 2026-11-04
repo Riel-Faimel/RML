@@ -1,9 +1,9 @@
-#include "app/download/Flow/NeoForge.h"
+#include "app/directory/Flow/NeoForge.h"
 
-#include "app/download/Flow/Profile.h"
-#include "app/download/Flow/Support.h"
+#include "app/directory/Flow/Profile.h"
+#include "app/directory/Flow/Support.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 bool NeoForge::RunImpl(const Context& context, const Request& request, const Progress& progress,
@@ -16,7 +16,7 @@ bool NeoForge::RunImpl(const Context& context, const Request& request, const Pro
 
     Support::Report(progress, "NeoForge " + version, 2);
     if (!Profile::Install(context, request, "NeoForge", version,
-                          versionsource::NeoForge::InstallerUrl(
+                          download::versionsource::NeoForge::InstallerUrl(
                               context.sources.Origins().NeoForgeRoot(), version),
                           progress, outcome, error)) {
         return false;
@@ -27,4 +27,4 @@ bool NeoForge::RunImpl(const Context& context, const Request& request, const Pro
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

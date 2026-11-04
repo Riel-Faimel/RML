@@ -1,9 +1,9 @@
-#include "app/download/Installer/Placement/Placement.h"
+#include "app/directory/Installer/Placement/Placement.h"
 
 #include "app/directory/Directory.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace installer {
 
 std::string Placement::Directory(const std::string& instance_dir, Kind kind) {
@@ -36,4 +36,4 @@ std::string Placement::Resolve(const std::string& instance_dir, Kind kind,
 }
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

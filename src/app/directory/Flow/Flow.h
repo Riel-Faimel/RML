@@ -7,12 +7,12 @@
 #include <functional>
 #include <string>
 
-#include "app/download/Installer/Installer.h"
+#include "app/directory/Installer/Installer.h"
 #include "app/download/VersionSource/VersionSource.h"
 #include "app/launch/Environment/Environment.h"
 #include "app/launch/Version/Version.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 using Progress = installer::Transfer::Progress;
@@ -33,8 +33,8 @@ struct Outcome {
 struct Context {
     launch::Version& versions;
     launch::Environment& environment;
-    VersionSource& sources;
-    Installer& installer;
+    download::VersionSource& sources;
+    directory::Installer& installer;
 };
 
 template <typename Derived>
@@ -47,4 +47,4 @@ public:
 };
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

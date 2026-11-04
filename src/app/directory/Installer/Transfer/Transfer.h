@@ -9,7 +9,7 @@
 
 class NetTask;
 
-namespace download {
+namespace directory {
 namespace installer {
 
 class Transfer {
@@ -51,4 +51,4 @@ private:
 };
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

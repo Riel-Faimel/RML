@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace download {
+namespace directory {
 namespace installer {
 
 class Placement {
@@ -19,4 +19,4 @@ public:
 };
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

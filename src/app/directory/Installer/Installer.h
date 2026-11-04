@@ -1,12 +1,12 @@
 // 安装器：依赖版本源拿到的清单，负责把东西拿下来并放对位置。
 #pragma once
 
-#include "app/download/Installer/Placement/Placement.h"
-#include "app/download/Installer/Transfer/Transfer.h"
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Installer/Placement/Placement.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Version/Version.h"
 #include "app/launch/Version/Version.h"
 
-namespace download {
+namespace directory {
 
 class Installer {
 public:
@@ -22,4 +22,4 @@ private:
     installer::Placement placement_;
 };
 
-}  // namespace download
+}  // namespace directory

@@ -1,9 +1,9 @@
-#include "app/download/Flow/Forge.h"
+#include "app/directory/Flow/Forge.h"
 
-#include "app/download/Flow/Profile.h"
-#include "app/download/Flow/Support.h"
+#include "app/directory/Flow/Profile.h"
+#include "app/directory/Flow/Support.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 bool Forge::RunImpl(const Context& context, const Request& request, const Progress& progress,
@@ -16,7 +16,7 @@ bool Forge::RunImpl(const Context& context, const Request& request, const Progre
 
     Support::Report(progress, "Forge " + version, 2);
     if (!Profile::Install(context, request, "Forge", version,
-                          versionsource::Forge::InstallerUrl(context.sources.Origins().ForgeRoot(),
+                          download::versionsource::Forge::InstallerUrl(context.sources.Origins().ForgeRoot(),
                                                              version),
                           progress, outcome, error)) {
         return false;
@@ -27,4 +27,4 @@ bool Forge::RunImpl(const Context& context, const Request& request, const Progre
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

@@ -1,11 +1,11 @@
-#include "app/download/Flow/Dispatcher.h"
+#include "app/directory/Flow/Dispatcher.h"
 
-#include "app/download/Flow/Fabric.h"
-#include "app/download/Flow/Forge.h"
-#include "app/download/Flow/NeoForge.h"
-#include "app/download/Flow/Vanilla.h"
+#include "app/directory/Flow/Fabric.h"
+#include "app/directory/Flow/Forge.h"
+#include "app/directory/Flow/NeoForge.h"
+#include "app/directory/Flow/Vanilla.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 bool Dispatcher::Run(const Context& context, const Request& request, const Progress& progress,
@@ -21,4 +21,4 @@ bool Dispatcher::Run(const Context& context, const Request& request, const Progr
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

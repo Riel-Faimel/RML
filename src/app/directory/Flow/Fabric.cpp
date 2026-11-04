@@ -1,12 +1,12 @@
-#include "app/download/Flow/Fabric.h"
+#include "app/directory/Flow/Fabric.h"
 
 #include "app/directory/Directory.h"
-#include "app/download/Flow/Support.h"
-#include "app/download/Installer/Version/Version.h"
+#include "app/directory/Flow/Support.h"
+#include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace flow {
 
 bool Fabric::RunImpl(const Context& context, const Request& request, const Progress& progress,
@@ -71,4 +71,4 @@ bool Fabric::RunImpl(const Context& context, const Request& request, const Progr
 }
 
 }  // namespace flow
-}  // namespace download
+}  // namespace directory

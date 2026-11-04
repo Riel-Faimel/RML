@@ -97,7 +97,7 @@ bool WriteServerMarker(const launch::Version& versions, const std::string& id,
 }  // namespace
 
 Installer::Installer(launch::Version& versions, launch::Environment& environment,
-                     download::VersionSource& sources, download::installer::Transfer& transfer)
+                     download::VersionSource& sources, directory::installer::Transfer& transfer)
     : versions_(versions), environment_(environment), sources_(sources), transfer_(transfer) {}
 
 bool Installer::Vanilla(const std::string& mc_version, const Progress& progress,
@@ -120,14 +120,14 @@ bool Installer::Vanilla(const std::string& mc_version, const Progress& progress,
     if (!Prepare(id, name, "原版", mc_version, java_major, error)) return false;
 
     const std::string dir = versions_.VersionDir(id);
-    download::installer::Transfer::Task task;
+    directory::installer::Transfer::Task task;
     task.url = server_url;
     task.sha1 = server["sha1"].AsString();
     task.dest = tools::JoinPath(dir, "server.jar");
     task.label = mc_version + "-server.jar";
     task.size = server["size"].AsInt(0);
 
-    download::installer::Transfer::Result result;
+    directory::installer::Transfer::Result result;
     if (!transfer_.Run({task}, progress, result, error)) {
         error = "下载服务端失败（" + task.dest + "）: " + error;
         return false;
@@ -174,14 +174,14 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
     const std::string game_libraries = Directory(versions_.GameDir()).LibrariesRoot();
 
     // 1) 原版 server.jar
-    download::installer::Transfer::Task jar_task;
+    directory::installer::Transfer::Task jar_task;
     jar_task.url = server_url;
     jar_task.sha1 = server["sha1"].AsString();
     jar_task.dest = tools::JoinPath(dir, "server.jar");
     jar_task.label = mc_version + "-server.jar";
     jar_task.size = server["size"].AsInt(0);
 
-    download::installer::Transfer::Result result;
+    directory::installer::Transfer::Result result;
     if (!transfer_.Run({jar_task}, progress, result, error)) {
         error = "下载原版服务端失败（" + jar_task.dest + "）: " + error;
         return false;
@@ -214,7 +214,7 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
         return false;
     }
 
-    std::vector<download::installer::Transfer::Task> library_tasks;
+    std::vector<directory::installer::Transfer::Task> library_tasks;
     std::vector<std::string> classpath;
     for (size_t i = 0; i < libraries.Size(); ++i) {
         const Json::Value& library = libraries.At(i);
@@ -243,7 +243,7 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
                 return false;
             }
         } else {
-            download::installer::Transfer::Task task;
+            directory::installer::Transfer::Task task;
             task.url = url;
             task.sha1 = sha1;
             task.dest = dest;
@@ -254,7 +254,7 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
     }
 
     if (!library_tasks.empty()) {
-        download::installer::Transfer::Result library_result;
+        directory::installer::Transfer::Result library_result;
         if (!transfer_.Run(library_tasks, progress, library_result, error)) {
             error = "下载 Fabric 依赖失败: " + error;
             return false;

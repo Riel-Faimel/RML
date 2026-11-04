@@ -1,5 +1,5 @@
 #include "app/network/Network.h"
-#include "app/download/Installer/Transfer/Transfer.h"
+#include "app/directory/Installer/Transfer/Transfer.h"
 
 #include <atomic>
 #include <cctype>
@@ -14,7 +14,7 @@
 #include "app/nettask/NetTask.h"
 #include "app/tools/tools.h"
 
-namespace download {
+namespace directory {
 namespace installer {
 
 namespace {
@@ -229,4 +229,4 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
 }
 
 }  // namespace installer
-}  // namespace download
+}  // namespace directory

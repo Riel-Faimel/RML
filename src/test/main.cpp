@@ -95,7 +95,7 @@ int main() {
     // 补全检查：跑一遍安装器（文件齐时全部跳过，不发请求）
     std::vector<std::string> missing_files;
     std::string inspect_error;
-    download::installer::Transfer::Result report;
+    directory::installer::Transfer::Result report;
     auto& installer = launch.Downloader().Installers();
     const bool inspected = installer.Versions().Install(
         installer.Transfers(), [](const std::string&, int, int) {}, report, inspect_error);
