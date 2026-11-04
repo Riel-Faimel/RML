@@ -225,7 +225,11 @@ bool TaskManager::DownloadOne(Task& task, const Resource& resource, std::string&
     }
 
     const std::string part = resource.dest + ".part";
-    if (!tools::DownloadFile(resource.url, part, error)) {
+    const bool downloaded = tools::DownloadFile(resource.url, part, error, [this, &task] {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return task.cancelled;
+    });
+    if (!downloaded) {
         error = resource.label + ": " + error;
         std::error_code ignored;
         std::filesystem::remove(tools::ToPath(part), ignored);

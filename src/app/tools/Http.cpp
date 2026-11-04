@@ -32,7 +32,8 @@ std::string TempBodyPath() {
 }
 
 bool FetchToFile(const std::string& url, const std::string& path,
-                 const std::vector<std::string>* headers, std::string& error) {
+                 const std::vector<std::string>* headers, std::string& error,
+                 const std::function<bool()>& cancelled = {}) {
 #ifdef _WIN32
     auto widen = [](const std::string& text) {
         int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
@@ -111,6 +112,11 @@ bool FetchToFile(const std::string& url, const std::string& path,
             } else {
                 ok = true;
                 while (true) {
+                    if (cancelled && cancelled()) {
+                        error = "cancelled";
+                        ok = false;
+                        break;
+                    }
                     DWORD available = 0;
                     // QueryDataAvailable 失败不能当 EOF，否则会留下截断文件
                     if (!WinHttpQueryDataAvailable(request, &available)) {
@@ -171,6 +177,11 @@ namespace tools {
 
 bool DownloadFile(const std::string& url, const std::string& path, std::string& error) {
     return FetchToFile(url, path, nullptr, error);
+}
+
+bool DownloadFile(const std::string& url, const std::string& path, std::string& error,
+                  const std::function<bool()>& cancelled) {
+    return FetchToFile(url, path, nullptr, error, cancelled);
 }
 
 bool HttpGet(const std::string& url, std::string& out, std::string& error) {
