@@ -20,6 +20,7 @@ public:
         std::string java_path;   // 手动指定 Java；空表示按版本要求自动选
         std::string gc;          // 自动 / G1 / ZGC / Parallel
         std::string jvm_args;    // 额外 JVM 参数，空格分隔
+        std::string game_dir;    // 独立 gameDir；空表示使用原版根目录
         std::string launcher_name = "RML";
         std::string launcher_version = "0.1";
     };

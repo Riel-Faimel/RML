@@ -105,6 +105,12 @@ public slots:
     Q_INVOKABLE void installGame(int kind, int index, const QString& loader);
     Q_INVOKABLE void installServer(int kind, int index, const QString& loader);
 
+    // 当前版本的 Mod：仓库 / 已安装
+    Q_INVOKABLE QVariantList installedMods();
+    Q_INVOKABLE QVariantList repositoryMods();
+    Q_INVOKABLE bool installRepositoryMod(int index);
+    Q_INVOKABLE bool removeInstalledMod(int index);
+
     // 背景图
     Q_INVOKABLE void setBackground(const QString& path);
     Q_INVOKABLE void resetBackground();
@@ -156,6 +162,7 @@ private:
     QTimer status_timer_;
 
     QStringList content_results_;
+    QStringList content_names_;
     QStringList content_ids_;
     QStringList content_sources_;
     QStringList release_versions_, snapshot_versions_, april_versions_;
@@ -172,4 +179,7 @@ private:
     double repair_progress_ = 0.0;
     bool repair_failed_ = false;
     std::atomic<bool> cancel_requested_{false};
+
+    QVariantList repository_items_;
+    QVariantList installed_items_;
 };

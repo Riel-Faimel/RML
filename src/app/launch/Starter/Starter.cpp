@@ -142,7 +142,8 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     Version::Detail detail;
     if (!version_.LoadDetail(detail, error)) return false;
 
-    const std::string game_dir = version_.GameDir();
+    const std::string game_dir =
+        options.game_dir.empty() ? version_.GameDir() : options.game_dir;
     const Directory& paths = version_.Paths();
 
     Command command;

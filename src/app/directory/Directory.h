@@ -53,8 +53,13 @@ public:
     std::string ServerDir(const std::string& dir) const;
     std::string GameLogsRoot() const;
 
-    std::string ModsRoot() const;
+    std::string ModsRoot() const;                 // 全局 Mod 仓库
+    std::string RepositoryModsRoot() const { return ModsRoot(); }
     bool EnsureModsRoot(std::string& error) const;
+    std::string InstalledGameRoot(const std::string& id) const;
+    std::string InstalledModsRoot(const std::string& id) const;
+    std::string InstalledManifest(const std::string& id) const;
+    bool EnsureInstalledModsRoot(const std::string& id, std::string& error) const;
     std::string ShaderPacksRoot() const;
     std::string ResourcePacksRoot() const;
     std::string DatapacksRoot() const;

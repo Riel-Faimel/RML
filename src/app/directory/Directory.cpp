@@ -187,6 +187,29 @@ bool Directory::EnsureModsRoot(std::string& error) const {
     return true;
 }
 
+std::string Directory::InstalledGameRoot(const std::string& id) const {
+    // Mod 版使用独立 gameDir，这样 versions/<id>/mods 才会被 Forge/Fabric 加载
+    return VersionDir(id);
+}
+
+std::string Directory::InstalledModsRoot(const std::string& id) const {
+    return Join(InstalledGameRoot(id), "mods");
+}
+
+std::string Directory::InstalledManifest(const std::string& id) const {
+    return Join(InstalledGameRoot(id), "mods.json");
+}
+
+bool Directory::EnsureInstalledModsRoot(const std::string& id, std::string& error) const {
+    std::error_code ec;
+    std::filesystem::create_directories(ToPath(InstalledModsRoot(id)), ec);
+    if (ec) {
+        error = "创建版本 Mods 目录失败: " + InstalledModsRoot(id);
+        return false;
+    }
+    return true;
+}
+
 std::string Directory::ShaderPacksRoot() const { return Join(game_root_, "shaderpacks"); }
 
 std::string Directory::ResourcePacksRoot() const { return Join(game_root_, "resourcepacks"); }

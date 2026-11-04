@@ -11,6 +11,30 @@ Item {
     property int pendingDelete: -1
     property int pendingRename: -1
     property bool detailsOpen: false
+    property bool modsRepoMode: false
+
+    function reloadInstalled() {
+        installedModel.clear()
+        var items = bridge.installedMods()
+        for (var i = 0; i < items.length; ++i) installedModel.append(items[i])
+    }
+
+    function loadRepository() {
+        repoModel.clear()
+        var items = bridge.repositoryMods()
+        for (var i = 0; i < items.length; ++i) repoModel.append(items[i])
+    }
+
+    function installRepoMod(index) {
+        if (bridge.installRepositoryMod(index)) {
+            page.loadRepository()
+            page.reloadInstalled()
+        }
+    }
+
+    function removeInstalledMod(index) {
+        if (bridge.removeInstalledMod(index)) page.reloadInstalled()
+    }
 
     function applyOptions() {
         var parsed = parseInt(memoryField.text)
@@ -63,6 +87,148 @@ Item {
         }
 
         onAccepted: bridge.renameVersionAt(page.pendingRename, renameField.text)
+    }
+
+    ListModel { id: installedModel }
+    ListModel { id: repoModel }
+
+    SoftDialog {
+        id: modsDialog
+        title: qsTr("模组管理")
+        okText: qsTr("关闭")
+        showCancel: false
+        width: 640
+        height: 520
+
+        onOpened: {
+            page.modsRepoMode = false
+            page.reloadInstalled()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Text {
+                Layout.fillWidth: true
+                text: bridge.selectedName
+                color: Theme.text
+                font.pixelSize: 14
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            SoftButton {
+                text: page.modsRepoMode ? qsTr("返回") : qsTr("+")
+                primary: !page.modsRepoMode
+                onClicked: {
+                    if (page.modsRepoMode) {
+                        page.modsRepoMode = false
+                        page.reloadInstalled()
+                    } else {
+                        page.modsRepoMode = true
+                        page.loadRepository()
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: !page.modsRepoMode && installedModel.count === 0
+            text: qsTr("当前版本还没有安装模组")
+            color: Theme.textSecondary
+            font.pixelSize: 12
+        }
+
+        ListView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: !page.modsRepoMode
+            clip: true
+            spacing: 6
+            model: installedModel
+
+            delegate: RowLayout {
+                width: ListView.view.width
+                height: 38
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: model.name
+                    color: Theme.text
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    Layout.preferredWidth: 130
+                    text: model.version
+                    color: Theme.textSecondary
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+
+                SoftButton {
+                    text: qsTr("删除")
+                    onClicked: page.removeInstalledMod(index)
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: page.modsRepoMode && repoModel.count === 0
+            text: qsTr("Mod 仓库里没有适合当前版本的模组")
+            color: Theme.textSecondary
+            font.pixelSize: 12
+        }
+
+        ListView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: page.modsRepoMode
+            clip: true
+            spacing: 6
+            model: repoModel
+
+            delegate: RowLayout {
+                width: ListView.view.width
+                height: 46
+                spacing: 8
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: 2
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: model.name
+                        color: Theme.text
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: model.compatible ? (model.version || qsTr("已下载")) : model.reason
+                        color: model.compatible ? Theme.textSecondary : Theme.danger
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
+                }
+
+                SoftButton {
+                    text: qsTr("安装")
+                    enabled: model.compatible
+                    primary: true
+                    onClicked: page.installRepoMod(index)
+                }
+            }
+        }
     }
 
     RowLayout {
@@ -434,6 +600,31 @@ Item {
                                 }
                             }
                         }
+                    }
+
+                    Button {
+                        text: qsTr("模组")
+                        visible: bridge.loader.length > 0 && bridge.loader !== qsTr("原版")
+                        enabled: !bridge.busy && bridge.selectedIndex >= 0
+                        implicitWidth: 84
+                        implicitHeight: 40
+
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? Theme.primary : Theme.textSecondary
+                            font.pixelSize: 13
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            radius: Theme.radiusSmall
+                            color: parent.hovered ? Theme.primarySoft : "#88FFFFFF"
+                            border.width: 1
+                            border.color: Theme.primary
+                        }
+
+                        onClicked: modsDialog.open()
                     }
 
                     Button {
