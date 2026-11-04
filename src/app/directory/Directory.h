@@ -54,6 +54,7 @@ public:
     std::string GameLogsRoot() const;
 
     std::string ModsRoot() const;
+    bool EnsureModsRoot(std::string& error) const;
     std::string ShaderPacksRoot() const;
     std::string ResourcePacksRoot() const;
     std::string DatapacksRoot() const;

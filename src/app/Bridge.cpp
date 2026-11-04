@@ -387,6 +387,14 @@ void Bridge::installJava(int major) {
 void Bridge::launchGame() {
     if (busy_) return;
 
+    // 老版本/老安装可能没有 mods；启动前补建，保证 Forge/Fabric 的 Mod 目录存在
+    std::string mods_error;
+    if (!Directory(launch_.Versions().GameDir()).EnsureModsRoot(mods_error)) {
+        status_ = QString::fromStdString(mods_error);
+        emit changed();
+        return;
+    }
+
     repair_failed_ = false;
     repairing_ = false;
     cancelling_ = false;

@@ -230,6 +230,10 @@ bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string&
 }
 
 void Version::ApplyDefaults(const std::string& game_dir) {
+    // Forge/Fabric 首次启动前就先建好 mods，避免用户找不到放 Mod 的位置
+    std::string mods_error;
+    Directory(game_dir).EnsureModsRoot(mods_error);
+
     const std::string path = Directory(game_dir).GameFile("options.txt");
     const std::string text = tools::ReadTextFile(path);
 

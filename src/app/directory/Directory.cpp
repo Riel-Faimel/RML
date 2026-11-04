@@ -177,6 +177,16 @@ std::string Directory::GameLogsRoot() const { return Join(game_root_, "logs"); }
 
 std::string Directory::ModsRoot() const { return Join(game_root_, "mods"); }
 
+bool Directory::EnsureModsRoot(std::string& error) const {
+    std::error_code ec;
+    std::filesystem::create_directories(ToPath(ModsRoot()), ec);
+    if (ec) {
+        error = "创建 Mods 目录失败: " + ModsRoot();
+        return false;
+    }
+    return true;
+}
+
 std::string Directory::ShaderPacksRoot() const { return Join(game_root_, "shaderpacks"); }
 
 std::string Directory::ResourcePacksRoot() const { return Join(game_root_, "resourcepacks"); }
