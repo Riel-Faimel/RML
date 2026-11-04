@@ -11,9 +11,13 @@ Dialog {
     property string okText: qsTr("确定")
     property string cancelText: qsTr("取消")
     property bool showCancel: true
+    property bool side: false
 
     modal: true
-    anchors.centerIn: Overlay.overlay
+    anchors.centerIn: side ? undefined : Overlay.overlay
+    x: side ? Overlay.overlay.width - width : 0
+    y: 0
+    height: side ? Overlay.overlay.height : implicitHeight
     padding: 18
     width: 440
 

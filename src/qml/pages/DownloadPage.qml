@@ -12,24 +12,44 @@ Item {
     property string kind: "mod"
     property int versionKind: 0
     property var loaderChoice: ({})
+    property var loaderVersionChoice: ({})
     property int pendingKind: 0
     property int pendingIndex: -1
     property string pendingLoader: ""
     property string pendingMcVersion: ""
 
     function loaderFor(id) { return page.loaderChoice[id] || "原版" }
+    function loaderVersionFor(id) { return page.loaderVersionChoice[id] || "" }
+
+    function setLoaderVersion(id, version) {
+        var copy = {}
+        for (var key in page.loaderVersionChoice) copy[key] = page.loaderVersionChoice[key]
+        copy[id] = version
+        page.loaderVersionChoice = copy
+    }
+
+    function chooseLoader(id, name) {
+        page.setLoader(id, name)
+        page.setLoaderVersion(id, "")
+        page.pendingMcVersion = id
+        page.pendingLoader = name
+        if (name === "原版") return
+        bridge.loadLoaderVersions(id, name)
+        loaderDialog.selectedVersion = ""
+        loaderDialog.open()
+    }
 
     function installVersion(kind, index, loader, mcVersion) {
         if (loader === "原版") {
             bridge.installGame(kind, index, loader)
             return
         }
-        page.pendingKind = kind
-        page.pendingIndex = index
-        page.pendingLoader = loader
-        page.pendingMcVersion = mcVersion
-        bridge.loadLoaderVersions(mcVersion, loader)
-        loaderDialog.open()
+        const version = page.loaderVersionFor(mcVersion)
+        if (version.length === 0) {
+            page.chooseLoader(mcVersion, loader)
+            return
+        }
+        bridge.installGameWithLoader(kind, index, loader, version)
     }
 
     function setLoader(id, name) {
@@ -55,10 +75,18 @@ Item {
     SoftDialog {
         id: loaderDialog
         title: qsTr("选择 %1 版本").arg(page.pendingLoader)
-        okText: qsTr("关闭")
-        showCancel: false
-        width: 460
-        height: 460
+        okText: qsTr("确定")
+        side: true
+        width: 380
+        height: page.height
+        property string selectedVersion: ""
+
+        onOpened: selectedVersion = page.loaderVersionFor(page.pendingMcVersion)
+        onAccepted: {
+            if (selectedVersion.length > 0) {
+                page.setLoaderVersion(page.pendingMcVersion, selectedVersion)
+            }
+        }
 
         Text {
             Layout.fillWidth: true
@@ -78,27 +106,29 @@ Item {
             spacing: 6
             model: bridge.loaderVersionOptions
 
-            delegate: RowLayout {
+            delegate: Rectangle {
                 width: ListView.view.width
                 height: 38
-                spacing: 8
+                radius: Theme.radiusSmall
+                color: modelData === loaderDialog.selectedVersion ? Theme.primarySoft : "#66FFFFFF"
+                border.width: 1
+                border.color: modelData === loaderDialog.selectedVersion ? Theme.primary : Theme.glassBorder
 
                 Text {
-                    Layout.fillWidth: true
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: Text.AlignVCenter
                     text: modelData
-                    color: Theme.text
+                    color: modelData === loaderDialog.selectedVersion ? Theme.primary : Theme.text
                     font.pixelSize: 12
                     elide: Text.ElideRight
                 }
 
-                SoftButton {
-                    text: qsTr("安装")
-                    primary: true
-                    onClicked: {
-                        bridge.installGameWithLoader(page.pendingKind, page.pendingIndex,
-                                                     page.pendingLoader, modelData)
-                        loaderDialog.close()
-                    }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: loaderDialog.selectedVersion = modelData
                 }
             }
         }
@@ -342,7 +372,7 @@ Item {
 
                                         delegate: SoftMenuItem {
                                             text: modelData
-                                            onTriggered: page.setLoader(versionRow.versionId, modelData)
+                                            onTriggered: page.chooseLoader(versionRow.versionId, modelData)
                                         }
                                     }
                                 }
