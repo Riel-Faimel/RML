@@ -88,13 +88,5 @@ GlassPanel {
                 font.pixelSize: 12
             }
         }
-
-        Text {
-            Layout.fillWidth: true
-            text: serverBridge.message
-            color: Theme.textSecondary
-            font.pixelSize: 11
-            wrapMode: Text.WordWrap
-        }
     }
 }

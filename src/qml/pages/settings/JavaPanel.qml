@@ -112,13 +112,5 @@ GlassPanel {
                 }
             }
         }
-
-        Text {
-            Layout.fillWidth: true
-            text: bridge.status
-            font.pixelSize: 12
-            color: Theme.textSecondary
-            wrapMode: Text.WordWrap
-        }
     }
 }

@@ -360,15 +360,6 @@ GlassPanel {
                 onClicked: root.sendCommand()
             }
         }
-
-        Text {
-            Layout.fillWidth: true
-            visible: text.length > 0
-            text: serverBridge.message
-            font.pixelSize: 11
-            color: Theme.textSecondary
-            wrapMode: Text.WordWrap
-        }
     }
 
     ColumnLayout {
@@ -383,16 +374,6 @@ GlassPanel {
             horizontalAlignment: Text.AlignHCenter
             color: Theme.textSecondary
             font.pixelSize: 14
-        }
-
-        Text {
-            Layout.fillWidth: true
-            visible: text.length > 0
-            text: serverBridge.message
-            horizontalAlignment: Text.AlignHCenter
-            color: Theme.textSecondary
-            font.pixelSize: 11
-            wrapMode: Text.WordWrap
         }
     }
 }

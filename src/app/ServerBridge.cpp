@@ -121,7 +121,7 @@ void ServerBridge::reloadInstallations() {
     } else if (static_cast<size_t>(selected_) >= server_.Instances().size()) {
         selected_ = static_cast<int>(server_.Instances().size()) - 1;
     }
-    message_ = QStringLiteral("服务端清单已刷新");
+    message_.clear();
     emit changed();
 }
 

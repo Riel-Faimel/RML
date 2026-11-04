@@ -98,7 +98,7 @@ GlassPanel {
 
             SoftButton {
                 Layout.fillWidth: true
-                text: qsTr("清理孤立核心")
+                text: qsTr("清理")
                 textSize: 12
                 implicitHeight: 30
                 enabled: !bridge.busy

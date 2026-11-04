@@ -12,7 +12,8 @@ Item {
     property bool squareBottomLeft: false
     property bool squareBottomRight: false
     property bool showBorder: true
-    property real tintOpacity: 0.52
+    property bool blurred: false
+    property real tintOpacity: 0.30
     property real blurAmount: 0.85
     default property alias content: contentHost.data
 
@@ -74,6 +75,8 @@ Item {
 
     MultiEffect {
         anchors.fill: parent
+        visible: root.blurred
+        enabled: root.blurred
         source: crop
         blurEnabled: true
         blur: root.blurAmount
@@ -85,8 +88,8 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.corner
-        color: "#FFFFFF"
-        opacity: root.tintOpacity
+        color: Theme.surface
+        opacity: root.blurred ? root.tintOpacity : Math.min(root.tintOpacity, 0.24)
     }
 
     Rectangle {

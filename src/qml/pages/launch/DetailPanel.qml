@@ -240,14 +240,6 @@ GlassPanel {
                     anchors.bottomMargin: 8
                     spacing: 5
 
-                    Text {
-                        Layout.fillWidth: true
-                        text: bridge.status
-                        font.pixelSize: 12
-                        color: Theme.textSecondary
-                        elide: Text.ElideRight
-                    }
-
                     Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: 6

@@ -170,13 +170,4 @@ SoftDialog {
             }
         }
     }
-
-    Text {
-        Layout.fillWidth: true
-        visible: dialog.repoMode
-        text: bridge.downloadStatus
-        color: Theme.textSecondary
-        font.pixelSize: 11
-        wrapMode: Text.WordWrap
-    }
 }

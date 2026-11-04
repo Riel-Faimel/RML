@@ -2,9 +2,14 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "."
+import "components"
 
 ApplicationWindow {
     id: window
+
+    function showToast(text, error) {
+        toast.show(text, error)
+    }
 
     width: 1100
     height: 720
@@ -144,5 +149,29 @@ ApplicationWindow {
         onTriggered: shell.grabToImage(function(result) {
             result.saveToFile(rmlShotPath)
         })
+    }
+
+    Toast {
+        id: toast
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.margins: 18
+    }
+
+    Connections {
+        target: bridge
+        function onChanged() {
+            if (!bridge.busy) toast.show(bridge.status)
+        }
+        function onDownloadChanged() {
+            if (!bridge.downloadBusy && bridge.downloadStatus.length > 0) {
+                toast.show(bridge.downloadStatus, bridge.downloadFailed)
+            }
+        }
+    }
+
+    Connections {
+        target: serverBridge
+        function onChanged() { toast.show(serverBridge.message) }
     }
 }

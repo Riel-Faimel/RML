@@ -11,7 +11,6 @@ SoftDialog {
     width: 460
 
     property var files: []
-    property string errorText: ""
 
     signal imported()
 
@@ -21,25 +20,24 @@ SoftDialog {
         var index = loaderBox.model.indexOf(loader)
         loaderBox.currentIndex = index >= 0 ? index : 0
         modVersionField.text = ""
-        dialog.errorText = ""
         open()
     }
 
     function submit() {
         if (dialog.files.length === 0) {
-            dialog.errorText = qsTr("没有选择文件")
+            Window.window.showToast(qsTr("没有选择文件"), true)
             return false
         }
         var mc = gameVersionField.text.trim()
         var version = modVersionField.text.trim()
         if (mc.length === 0 || version.length === 0) {
-            dialog.errorText = qsTr("游戏版本和 Mod 版本不能为空")
+            Window.window.showToast(qsTr("游戏版本和 Mod 版本不能为空"), true)
             return false
         }
 
         for (var i = 0; i < dialog.files.length; ++i) {
             if (!bridge.importMod(dialog.files[i], mc, loaderBox.currentText, version)) {
-                dialog.errorText = bridge.downloadStatus
+                Window.window.showToast(bridge.downloadStatus, true)
                 return false
             }
         }
@@ -103,15 +101,6 @@ SoftDialog {
             Layout.fillWidth: true
             placeholderText: qsTr("例如 1.2.3")
         }
-    }
-
-    Text {
-        Layout.fillWidth: true
-        visible: dialog.errorText.length > 0
-        text: dialog.errorText
-        color: Theme.danger
-        font.pixelSize: 11
-        wrapMode: Text.WordWrap
     }
 
     Text {

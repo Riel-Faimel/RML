@@ -349,14 +349,6 @@ Item {
                     }
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: bridge.downloadStatus
-                    font.pixelSize: 13
-                    color: Theme.textSecondary
-                    wrapMode: Text.WordWrap
-                }
-
                 Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 6
