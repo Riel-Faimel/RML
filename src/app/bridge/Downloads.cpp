@@ -15,14 +15,16 @@ QString FromStd(const std::string& text) { return QString::fromStdString(text); 
 
 }  // namespace
 
-BridgeDownloads::BridgeDownloads(Launch& launch, QObject* context, Notify download_changed, Notify changed,
-                     InstalledHandler installed)
+BridgeDownloads::BridgeDownloads(Launch& launch, TaskManager& tasks, QObject* context,
+                                 Notify download_changed, Notify changed,
+                                 InstalledHandler installed)
     : launch_(launch),
+      tasks_(tasks),
       context_(context),
       download_changed_(std::move(download_changed)),
       changed_(std::move(changed)),
       installed_(std::move(installed)),
-      content_(launch, context, state_, download_changed_) {}
+      content_(launch, tasks, context, state_, download_changed_) {}
 
 const QStringList* BridgeDownloads::VersionIdsFor(int kind) const {
     if (kind == 1) return &snapshot_ids_;

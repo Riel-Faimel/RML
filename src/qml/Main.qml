@@ -72,6 +72,33 @@ ApplicationWindow {
             }
 
             Button {
+                id: taskButton
+                anchors.right: accountButton.left
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: 38
+                implicitHeight: 38
+                padding: 0
+                hoverEnabled: true
+
+                contentItem: Text {
+                    text: "⌄"
+                    font.pixelSize: 22
+                    color: taskButton.hovered || stack.currentIndex === 4 ? "#FFFFFF" : "#DDEAFF"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    radius: Theme.radiusSmall
+                    color: stack.currentIndex === 4 ? "#33FFFFFF"
+                                                    : (taskButton.hovered ? "#22FFFFFF" : "transparent")
+                }
+
+                onClicked: stack.currentIndex = 4
+            }
+
+            Button {
                 id: accountButton
                 anchors.right: parent.right
                 anchors.rightMargin: 20
@@ -105,6 +132,7 @@ ApplicationWindow {
             Loader { source: "pages/DownloadPage.qml" }
             Loader { source: "pages/ServerPage.qml" }
             Loader { source: "pages/SettingsPage.qml" }
+            Loader { source: "pages/TaskPage.qml" }
         }
     }
 

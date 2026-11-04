@@ -1,6 +1,7 @@
 #include "app/Bridge.h"
 
 #include <QMetaObject>
+#include <QVariantMap>
 
 #include <string>
 #include <thread>
@@ -18,11 +19,14 @@ Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* par
       account_name_(std::move(account_name)),
       memory_mb_(memory_mb),
       versions_(launch),
+      tasks_(),
       downloads_(
-          launch, this, [this] { emit downloadChanged(); }, [this] { emit changed(); },
+          launch, tasks_, this, [this] { emit downloadChanged(); }, [this] { emit changed(); },
           [this](const std::string& id) { versions_.SelectInstalled(id); }) {
     connect(&status_timer_, &QTimer::timeout, this, &Bridge::RefreshStatus);
     status_timer_.start(1000);
+    connect(&task_timer_, &QTimer::timeout, this, &Bridge::RefreshTasks);
+    task_timer_.start(500);
 }
 
 QString Bridge::GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
@@ -396,6 +400,37 @@ bool Bridge::removeInstalledMod(int index) {
     downloads_.SetStatus(message);
     return ok;
 }
+
+QVariantList Bridge::Tasks() const {
+    QVariantList out;
+    for (const auto& task : tasks_.Snapshots()) {
+        QVariantMap item;
+        item["id"] = static_cast<qulonglong>(task.id);
+        item["title"] = QString::fromStdString(task.title);
+        item["stage"] = QString::fromStdString(task.stage);
+        item["status"] = QString::fromStdString(task.status);
+        item["error"] = QString::fromStdString(task.error);
+        item["progress"] = task.progress;
+        item["bytes"] = static_cast<qlonglong>(task.bytes);
+        item["total"] = static_cast<qlonglong>(task.total);
+        out.append(item);
+    }
+    return out;
+}
+
+int Bridge::ActiveTasks() const {
+    int count = 0;
+    for (const auto& task : tasks_.Snapshots()) {
+        if (task.status == "queued" || task.status == "running" || task.status == "paused") ++count;
+    }
+    return count;
+}
+
+void Bridge::pauseTask(qulonglong id) { tasks_.Pause(id); emit tasksChanged(); }
+void Bridge::resumeTask(qulonglong id) { tasks_.Resume(id); emit tasksChanged(); }
+void Bridge::cancelTask(qulonglong id) { tasks_.Cancel(id); emit tasksChanged(); }
+
+void Bridge::RefreshTasks() { emit tasksChanged(); }
 
 void Bridge::RefreshStatus() {
     // 只有本启动器确实拉起过游戏进程时才轮询退出码。

@@ -23,8 +23,13 @@ bool ContainsValue(const std::vector<std::string>& values, const std::string& wa
 
 }  // namespace
 
-BridgeContent::BridgeContent(Launch& launch, QObject* context, BridgeDownloadState& state, Notify download_changed)
-    : launch_(launch), context_(context), state_(state), download_changed_(std::move(download_changed)) {
+BridgeContent::BridgeContent(Launch& launch, TaskManager& tasks, QObject* context,
+                             BridgeDownloadState& state, Notify download_changed)
+    : launch_(launch),
+      tasks_(tasks),
+      context_(context),
+      state_(state),
+      download_changed_(std::move(download_changed)) {
     // 内容源：Modrinth / CurseForge（缺 key 的会标注出来）
     for (auto* source : launch_.Downloader().Sources().Sources()) {
         std::string reason;
@@ -129,7 +134,6 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
     std::thread([this, project_id, project_name, kind, instance_dir, loader, mc_version] {
         std::vector<ContentSource::Version> versions;
         std::string error;
-        auto& installer = launch_.Downloader().Installers();
 
         if (!SelectedSource()->Versions(project_id, loader, mc_version, versions, error)) {
             QMetaObject::invokeMethod(
@@ -182,53 +186,61 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         if (kind == "shader") placement_kind = download::installer::Placement::Kind::Shaderpack;
         if (kind == "resourcepack") placement_kind = download::installer::Placement::Kind::Resourcepack;
 
-        download::installer::Transfer::Task task;
-        task.url = file.url;
-        task.sha1 = file.sha1;
-        task.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
-                                                            file.filename, true);
-        task.label = file.filename;
-        task.size = file.size;
+        TaskManager::Resource resource;
+        resource.url = file.url;
+        resource.sha1 = file.sha1;
+        resource.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
+                                                                file.filename, true);
+        resource.label = file.filename;
+        resource.size = file.size;
 
-        download::installer::Transfer::Result result;
-        bool ok = installer.Transfers().Run({task}, {}, result, error);
-
-        if (ok && kind == "mod") {
-            Json::Value meta = Json::Value::Object();
-            meta.Set("file", Json::Value::String(file.filename));
-            meta.Set("project", Json::Value::String(project_id));
-            meta.Set("name", Json::Value::String(project_name.empty() ? project_id : project_name));
-            meta.Set("version", Json::Value::String(
-                                    chosen->name.empty() ? chosen->version_number : chosen->name));
-            meta.Set("side", Json::Value::String("both"));
-            meta.Set("sha1", Json::Value::String(file.sha1));
-            Json::Value game_versions = Json::Value::Array();
-            for (const auto& value : chosen->game_versions) {
-                game_versions.Push(Json::Value::String(value));
-            }
-            Json::Value loaders = Json::Value::Array();
-            for (const auto& value : chosen->loaders) {
-                loaders.Push(Json::Value::String(value));
-            }
-            meta.Set("gameVersions", game_versions);
-            meta.Set("loaders", loaders);
-            if (!tools::WriteTextFile(task.dest + ".rml.json", meta.Dump())) {
-                ok = false;
-                error = "写入 Mod 仓库描述失败: " + task.dest;
-            }
-        }
-
-        QMetaObject::invokeMethod(
-            context_,
-            [this, ok, error, file] {
-                state_.status = ok ? QStringLiteral("已下载到 Mod 仓库：%1").arg(FromStd(file.filename))
-                                   : QStringLiteral("安装失败：%1").arg(FromStd(error));
-                state_.busy = false;
-                state_.failed = !ok;
-                if (ok) state_.progress = 1.0;
-                download_changed_();
-            },
-            Qt::QueuedConnection);
+        const std::string version_name =
+            chosen->name.empty() ? chosen->version_number : chosen->name;
+        const std::vector<std::string> game_versions = chosen->game_versions;
+        const std::vector<std::string> loaders = chosen->loaders;
+        tasks_.Submit("下载 " + (project_name.empty() ? file.filename : project_name),
+                      {resource},
+                      [this, kind, project_id, project_name, version_name, game_versions, loaders,
+                       dest = resource.dest, filename = file.filename, sha1 = file.sha1](
+                          bool ok, const std::string& download_error) {
+                          std::string error = download_error;
+                          if (ok && kind == "mod") {
+                              Json::Value meta = Json::Value::Object();
+                              meta.Set("file", Json::Value::String(filename));
+                              meta.Set("project", Json::Value::String(project_id));
+                              meta.Set("name", Json::Value::String(project_name.empty() ? project_id
+                                                                                        : project_name));
+                              meta.Set("version", Json::Value::String(version_name));
+                              meta.Set("side", Json::Value::String("both"));
+                              meta.Set("sha1", Json::Value::String(sha1));
+                              Json::Value game_versions_json = Json::Value::Array();
+                              for (const auto& value : game_versions) {
+                                  game_versions_json.Push(Json::Value::String(value));
+                              }
+                              Json::Value loaders_json = Json::Value::Array();
+                              for (const auto& value : loaders) {
+                                  loaders_json.Push(Json::Value::String(value));
+                              }
+                              meta.Set("gameVersions", game_versions_json);
+                              meta.Set("loaders", loaders_json);
+                              if (!tools::WriteTextFile(dest + ".rml.json", meta.Dump())) {
+                                  ok = false;
+                                  error = "写入 Mod 仓库描述失败: " + dest;
+                              }
+                          }
+                          QMetaObject::invokeMethod(
+                              context_,
+                              [this, ok, error, filename] {
+                                  state_.status =
+                                      ok ? QStringLiteral("已下载到 Mod 仓库：%1").arg(FromStd(filename))
+                                         : QStringLiteral("下载失败：%1").arg(FromStd(error));
+                                  state_.busy = false;
+                                  state_.failed = !ok;
+                                  if (ok) state_.progress = 1.0;
+                                  download_changed_();
+                              },
+                              Qt::QueuedConnection);
+                      });
     }).detach();
 }
 

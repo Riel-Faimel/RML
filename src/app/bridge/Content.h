@@ -10,13 +10,14 @@
 
 #include "app/bridge/DownloadState.h"
 #include "app/launch/Launch.h"
+#include "app/tasks/TaskManager.h"
 #include "include/ContentSource.h"
 
 class BridgeContent {
 public:
     using Notify = std::function<void()>;
 
-    BridgeContent(Launch& launch, QObject* context, BridgeDownloadState& state,
+    BridgeContent(Launch& launch, TaskManager& tasks, QObject* context, BridgeDownloadState& state,
                   Notify download_changed);
 
     const QStringList& Results() const { return results_; }
@@ -32,6 +33,7 @@ private:
     ContentSource* SelectedSource();
 
     Launch& launch_;
+    TaskManager& tasks_;
     QObject* context_;
     BridgeDownloadState& state_;
     Notify download_changed_;

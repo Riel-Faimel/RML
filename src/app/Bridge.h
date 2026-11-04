@@ -15,6 +15,7 @@
 #include "app/bridge/SourceRecords.h"
 #include "app/bridge/Versions.h"
 #include "app/launch/Launch.h"
+#include "app/tasks/TaskManager.h"
 #include "include/AccountProvider.h"
 
 class Bridge : public QObject {
@@ -47,6 +48,8 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList loaderVersionOptions READ LoaderVersionOptions NOTIFY downloadChanged)
     Q_PROPERTY(bool loaderVersionsBusy READ LoaderVersionsBusy NOTIFY downloadChanged)
     Q_PROPERTY(QString loaderVersionsError READ LoaderVersionsError NOTIFY downloadChanged)
+    Q_PROPERTY(QVariantList tasks READ Tasks NOTIFY tasksChanged)
+    Q_PROPERTY(int activeTasks READ ActiveTasks NOTIFY tasksChanged)
     Q_PROPERTY(bool launchRepairing READ LaunchRepairing NOTIFY changed)
     Q_PROPERTY(bool launchCancelling READ LaunchCancelling NOTIFY changed)
     Q_PROPERTY(double launchProgress READ LaunchProgress NOTIFY changed)
@@ -88,6 +91,8 @@ public:
     QStringList LoaderVersionOptions() const { return downloads_.LoaderVersions(); }
     bool LoaderVersionsBusy() const { return downloads_.LoaderVersionsBusy(); }
     QString LoaderVersionsError() const { return downloads_.LoaderVersionsError(); }
+    QVariantList Tasks() const;
+    int ActiveTasks() const;
     bool LaunchRepairing() const { return repairing_; }
     bool LaunchCancelling() const { return cancelling_; }
     double LaunchProgress() const { return repair_progress_; }
@@ -117,6 +122,9 @@ public slots:
     Q_INVOKABLE void installGameWithLoader(int kind, int index, const QString& loader,
                                            const QString& loaderVersion);
     Q_INVOKABLE void loadLoaderVersions(const QString& mcVersion, const QString& loader);
+    Q_INVOKABLE void pauseTask(qulonglong id);
+    Q_INVOKABLE void resumeTask(qulonglong id);
+    Q_INVOKABLE void cancelTask(qulonglong id);
     Q_INVOKABLE void installServer(int kind, int index, const QString& loader);
 
     // 当前版本的 Mod：仓库 / 已安装
@@ -141,9 +149,11 @@ signals:
     void changed();
     void downloadChanged();
     void sourcesChanged();
+    void tasksChanged();
 
 private:
     void RefreshStatus();
+    void RefreshTasks();
     void SaveSources();
 
     Launch& launch_;
@@ -155,8 +165,10 @@ private:
     bool busy_ = false;
     bool game_started_ = false;
     QTimer status_timer_;
+    QTimer task_timer_;
 
     BridgeVersions versions_;
+    TaskManager tasks_;
     BridgeDownloads downloads_;
     BridgeMods mods_;
 
