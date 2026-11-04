@@ -247,34 +247,68 @@ bool Environment::Install(int major, std::string& error) {
     const char* temp = std::getenv("TEMP");
     const std::string archive =
         tools::JoinPath(temp != nullptr ? temp : ".", "rml-jre-" + std::to_string(major) + ".zip");
+    const std::string base = "https://api.adoptium.net/v3/binary/latest/" +
+                             std::to_string(major) + "/ga/windows/x64/";
 
-    const std::string url = "https://api.adoptium.net/v3/binary/latest/" + std::to_string(major) +
-                            "/windows/x64/jre/hotspot/normal/eclipse";
-    if (!tools::DownloadFile(url, archive, error)) {
-        error = "下载 Java " + std::to_string(major) + " 失败: " + error;
-        return false;
+    auto download = [&](const char* kind) {
+        error.clear();
+        return tools::DownloadFile(base + kind + "/hotspot/normal/eclipse", archive, error);
+    };
+
+    // JRE 优先；某些大版本没有 JRE 包时退到 JDK
+    if (!download("jre")) {
+        if (error.find("http_status_404") == std::string::npos) {
+            error = "下载 Java " + std::to_string(major) + " 失败: " + error;
+            return false;
+        }
+        if (!download("jdk")) {
+            error = "下载 Java " + std::to_string(major) + " 失败: " + error;
+            return false;
+        }
     }
 
-    // 用系统自带的 bsdtar 解压 zip，省得自己实现 inflate
-    if (!tools::RunAndWait({"tar", "-xf", archive, "-C", root}, error)) {
+    // 解压到临时目录，避免压缩包没有顶层目录时污染 runtimes
+    namespace fs = std::filesystem;
+    const std::string staging = tools::JoinPath(root, "extract-" + std::to_string(major));
+    std::error_code ec;
+    fs::remove_all(tools::ToPath(staging), ec);
+    if (!tools::EnsureDir(staging, error)) return false;
+
+    if (!tools::RunAndWait({"tar", "-xf", archive, "-C", staging}, error)) {
         error = "解压失败: " + error;
         return false;
     }
 
-    // 压缩包里是一个 jdk-xx 目录，改成固定名字，方便下次识别
-    namespace fs = std::filesystem;
-    const std::string target = tools::JoinPath(root, "temurin-" + std::to_string(major));
-    std::error_code ec;
-    for (const auto& child : tools::ListDirectories(root)) {
-        if (child.rfind("jdk-", 0) == 0 || child.rfind("jre-", 0) == 0) {
-            fs::remove_all(tools::ToPath(target), ec);
-            fs::rename(tools::ToPath(tools::JoinPath(root, child)), tools::ToPath(target), ec);
-            break;
+    // Adoptium 包顶层通常是 jdk8u...-jre / jdk-17...，也可能是压缩包根目录
+    std::string source;
+    if (tools::PathExists(tools::JoinPath(staging, "bin/java.exe"))) {
+        source = staging;
+    } else {
+        for (const auto& child : tools::ListDirectories(staging)) {
+            const std::string candidate = tools::JoinPath(staging, child);
+            if (tools::PathExists(tools::JoinPath(candidate, "bin/java.exe"))) {
+                source = candidate;
+                break;
+            }
         }
     }
+    if (source.empty()) {
+        error = "Java 压缩包解压后找不到 bin/java.exe";
+        return false;
+    }
+
+    const std::string target = tools::JoinPath(root, "temurin-" + std::to_string(major));
+    fs::remove_all(tools::ToPath(target), ec);
+    fs::rename(tools::ToPath(source), tools::ToPath(target), ec);
+    if (ec) {
+        error = "安装 Java 失败：无法移动解压目录";
+        return false;
+    }
+    fs::remove_all(tools::ToPath(staging), ec);
+    fs::remove(tools::ToPath(archive), ec);
 
     Refresh();
-    return true;
+    return tools::PathExists(tools::JoinPath(target, "bin/java.exe"));
 }
 
 }  // namespace launch
