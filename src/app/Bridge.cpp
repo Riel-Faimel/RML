@@ -140,6 +140,7 @@ void Bridge::selectJava(int index) {
 void Bridge::installJava(int major) {
     if (busy_) return;
     busy_ = true;
+    game_started_ = false;
     status_ = QStringLiteral("正在下载并安装 Java %1…").arg(major);
     emit changed();
 
@@ -187,6 +188,7 @@ void Bridge::launchGame() {
     repairing_ = false;
     cancelling_ = false;
     cancel_requested_ = false;
+    game_started_ = false;
 
     AccountProvider::Credentials credentials;
     credentials.username = account_name_.toStdString();
@@ -266,6 +268,7 @@ void Bridge::launchGame() {
                 this,
                 [this, repaired, built, started, report, repair_error, retry_error, retry_missing] {
                     busy_ = false;
+                    game_started_ = started;
                     repairing_ = false;
                     cancelling_ = false;
                     if (cancel_requested_.load()) {
@@ -307,11 +310,13 @@ void Bridge::launchGame() {
         status_ = QStringLiteral("启动失败：%1").arg(QString::fromStdString(error));
         repair_failed_ = true;
         repairing_ = false;
+        game_started_ = false;
         emit changed();
         return;
     }
 
     busy_ = true;
+    game_started_ = true;
     repair_failed_ = false;
     repairing_ = false;
     status_ = QStringLiteral("游戏已启动");
@@ -393,9 +398,12 @@ bool Bridge::removeInstalledMod(int index) {
 }
 
 void Bridge::RefreshStatus() {
-    if (!busy_) return;
+    // 只有本启动器确实拉起过游戏进程时才轮询退出码。
+    // Java 安装、版本下载等 busy_ 不等于“游戏已启动”，否则会误报退出码 -1。
+    if (!game_started_) return;
     if (launch_.GameStarter().IsRunning()) return;
 
+    game_started_ = false;
     busy_ = false;
     const int code = launch_.GameStarter().ExitCode();
     status_ = QStringLiteral("游戏已退出（退出码 %1）").arg(code);

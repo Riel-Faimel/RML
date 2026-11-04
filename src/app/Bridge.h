@@ -153,6 +153,7 @@ private:
     QString jvm_args_;
     QString status_ = QStringLiteral("空闲");
     bool busy_ = false;
+    bool game_started_ = false;
     QTimer status_timer_;
 
     BridgeVersions versions_;
