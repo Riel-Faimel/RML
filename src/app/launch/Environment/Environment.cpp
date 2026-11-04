@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "app/directory/Directory.h"
+#include "app/tasks/TaskManager.h"
 #include "app/tools/tools.h"
 
 #ifdef _WIN32
@@ -252,7 +253,15 @@ bool Environment::Install(int major, std::string& error) {
 
     auto download = [&](const char* kind) {
         error.clear();
-        return tools::DownloadFile(base + kind + "/hotspot/normal/eclipse", archive, error);
+        const std::string url = base + kind + "/hotspot/normal/eclipse";
+        if (task_manager_ != nullptr) {
+            TaskManager::Resource resource;
+            resource.url = url;
+            resource.dest = archive;
+            resource.label = "Java " + std::to_string(major);
+            return task_manager_->Run("下载 Java " + std::to_string(major), {resource}, error);
+        }
+        return tools::DownloadFile(url, archive, error);
     };
 
     // JRE 优先；某些大版本没有 JRE 包时退到 JDK

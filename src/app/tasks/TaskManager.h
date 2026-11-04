@@ -41,6 +41,9 @@ public:
     ~TaskManager();
 
     Id Submit(std::string title, std::vector<Resource> resources, Done done = {});
+
+    // 安装流程使用：提交后等待下载完成，但安装本身不算任务。
+    bool Run(const std::string& title, std::vector<Resource> resources, std::string& error);
     void Pause(Id id);
     void Resume(Id id);
     void Cancel(Id id);

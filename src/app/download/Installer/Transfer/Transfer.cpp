@@ -10,6 +10,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "app/tasks/TaskManager.h"
 #include "app/tools/tools.h"
 
 namespace download {
@@ -69,6 +70,28 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
 
     const int total = static_cast<int>(pending.size());
     if (total == 0) return true;
+
+    if (task_manager_ != nullptr) {
+        std::vector<TaskManager::Resource> resources;
+        resources.reserve(pending.size());
+        for (const Task& task : pending) {
+            TaskManager::Resource resource;
+            resource.url = task.url;
+            resource.sha1 = task.sha1;
+            resource.dest = task.dest;
+            resource.label = task.label;
+            resource.size = task.size;
+            resources.push_back(std::move(resource));
+        }
+        std::string run_error;
+        if (!task_manager_->Run("下载游戏文件", std::move(resources), run_error)) {
+            error = run_error;
+            return false;
+        }
+        result.downloaded = total;
+        if (progress) progress("下载完成", total, total);
+        return true;
+    }
 
     auto cancelled = [this] { return cancel_.load(std::memory_order_relaxed); };
 

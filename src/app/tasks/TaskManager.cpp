@@ -1,7 +1,9 @@
 #include "app/tasks/TaskManager.h"
 
+#include <chrono>
 #include <filesystem>
 #include <system_error>
+#include <thread>
 
 #include "app/tools/tools.h"
 
@@ -32,6 +34,28 @@ TaskManager::Id TaskManager::Submit(std::string title, std::vector<Resource> res
     queue_.push(tasks_.back().id);
     cv_.notify_one();
     return tasks_.back().id;
+}
+
+bool TaskManager::Run(const std::string& title, std::vector<Resource> resources,
+                      std::string& error) {
+    const Id id = Submit(title, std::move(resources), {});
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [&] {
+        for (const auto& task : tasks_) {
+            if (task.id != id) continue;
+            return task.status == "completed" || task.status == "failed" ||
+                   task.status == "cancelled";
+        }
+        return true;
+    });
+    for (const auto& task : tasks_) {
+        if (task.id != id) continue;
+        if (task.status == "completed") return true;
+        error = task.error.empty() ? "下载已取消" : task.error;
+        return false;
+    }
+    error = "下载任务不存在";
+    return false;
 }
 
 void TaskManager::Pause(Id id) {
@@ -191,6 +215,7 @@ void TaskManager::Run() {
             }
             done = task->done;
         }
+        cv_.notify_all();
         if (done) done(ok, error);
     }
 }
@@ -225,10 +250,17 @@ bool TaskManager::DownloadOne(Task& task, const Resource& resource, std::string&
     }
 
     const std::string part = resource.dest + ".part";
-    const bool downloaded = tools::DownloadFile(resource.url, part, error, [this, &task] {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return task.cancelled;
-    });
+    bool downloaded = false;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        error.clear();
+        downloaded = tools::DownloadFile(resource.url, part, error, [this, &task] {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return task.cancelled;
+        });
+        if (downloaded) break;
+        if (error == "cancelled") break;
+    }
     if (!downloaded) {
         error = resource.label + ": " + error;
         std::error_code ignored;

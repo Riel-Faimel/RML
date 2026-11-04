@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+class TaskManager;
+
 namespace launch {
 
 class Environment {
@@ -33,11 +35,15 @@ public:
     // 下载并解压到 ManagedRoot，不触碰系统
     bool Install(int major, std::string& error);
 
+    // Java 的网络下载交给任务模块；安装/解压仍由这里负责。
+    void SetTaskManager(TaskManager* task_manager) { task_manager_ = task_manager; }
+
 private:
     void Probe();
     void AddCandidate(const std::string& path, const std::string& source);
 
     std::vector<Java> javas_;
+    TaskManager* task_manager_ = nullptr;
 };
 
 }  // namespace launch

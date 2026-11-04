@@ -27,6 +27,9 @@ Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* par
     status_timer_.start(1000);
     connect(&task_timer_, &QTimer::timeout, this, &Bridge::RefreshTasks);
     task_timer_.start(500);
+
+    launch_.Downloader().Installers().Transfers().SetTaskManager(&tasks_);
+    launch_.Tools().SetTaskManager(&tasks_);
 }
 
 QString Bridge::GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
@@ -251,8 +254,13 @@ void Bridge::launchGame() {
             };
 
             auto& installer = launch_.Downloader().Installers();
-            const bool repaired = installer.Versions().Install(installer.Transfers(), progress,
+            auto& transfers = installer.Transfers();
+            // 自动补齐有自己的进度条，不进入任务页。
+            TaskManager* task_sink = transfers.task_manager();
+            transfers.SetTaskManager(nullptr);
+            const bool repaired = installer.Versions().Install(transfers, progress,
                                                                report, repair_error);
+            transfers.SetTaskManager(task_sink);
 
             const bool was_cancelled = cancel_requested_.load();
             launch::Starter::Command retry_command;
