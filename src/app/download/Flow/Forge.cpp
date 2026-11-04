@@ -8,8 +8,11 @@ namespace flow {
 
 bool Forge::RunImpl(const Context& context, const Request& request, const Progress& progress,
                     Outcome& outcome, std::string& error) {
-    std::string version;
-    if (!context.sources.Forges().Latest(request.mc_version, version, error)) return false;
+    std::string version = request.loader_version;
+    if (version.empty() &&
+        !context.sources.Forges().Latest(request.mc_version, version, error)) {
+        return false;
+    }
 
     Support::Report(progress, "Forge " + version, 2);
     if (!Profile::Install(context, request, "Forge", version,

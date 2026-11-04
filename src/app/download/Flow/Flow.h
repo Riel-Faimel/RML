@@ -21,6 +21,7 @@ struct Request {
     std::string game_dir;
     std::string mc_version;  // Mojang 的版本 id
     std::string loader;      // 原版 / Fabric / Forge / NeoForge
+    std::string loader_version;  // 用户选定的加载器版本；空表示取 latest
 };
 
 struct Outcome {

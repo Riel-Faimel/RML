@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "app/download/VersionSource/Cache/Cache.h"
 #include "app/download/VersionSource/Sources/Sources.h"
@@ -16,6 +17,10 @@ public:
 
     // 某个 MC 版本推荐的 Forge；version 是 maven 上的完整版本号
     bool Latest(const std::string& mc_version, std::string& version, std::string& error) const;
+
+    // 某个 MC 版本的全部 Forge 版本，新的在前
+    bool List(const std::string& mc_version, std::vector<std::string>& out,
+              std::string& error) const;
 
     static std::string InstallerUrl(const std::string& root, const std::string& version);
 

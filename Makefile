@@ -36,7 +36,12 @@ CXXFLAGS := -std=c++20 -O0 -g -DRML_DEBUG -MMD -MP
 endif
 
 CORE_SOURCES := src/app/tools/Json.cpp \
-                src/app/tools/tools.cpp \
+                src/app/tools/Json.Parser.cpp \
+                src/app/tools/Path.cpp \
+                src/app/tools/Http.cpp \
+                src/app/tools/Process.cpp \
+                src/app/tools/Sha1.cpp \
+                src/app/tools/Compat.cpp \
                 src/app/directory/Directory.cpp \
                 src/app/launch/Version/Version.cpp \
                 src/app/launch/Environment/Environment.cpp \
@@ -64,9 +69,19 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/server/Catalog/Catalog.cpp \
                 src/app/server/Runner/Runner.cpp \
                 src/app/server/Installer/Installer.cpp \
+                src/app/server/Properties/Properties.cpp \
+                src/app/server/Runtime/Control.cpp \
+                src/app/server/Naming/Name.cpp \
                 src/app/server/Server.cpp
 
-APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/ServerBridge.cpp
+APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/ServerBridge.cpp \
+                src/app/bridge/Labels.cpp \
+                src/app/bridge/Background.cpp \
+                src/app/bridge/SourceRecords.cpp \
+                src/app/bridge/Mods.cpp \
+                src/app/bridge/Versions.cpp \
+                src/app/bridge/Downloads.cpp \
+                src/app/bridge/Content.cpp
 
 CORE_OBJECTS := $(patsubst src/%.cpp,$(BUILD)/%.o,$(CORE_SOURCES))
 APP_OBJECTS  := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES)) \

@@ -1,223 +1,96 @@
 #include "app/Bridge.h"
 
-#include <QCoreApplication>
-#include <QDateTime>
-#include <QDebug>
-#include <QDir>
-#include <QFile>
-#include <QImage>
 #include <QMetaObject>
-#include <QUrl>
-#include <QVariantMap>
 
-#include <algorithm>
-#include <cctype>
-#include <filesystem>
+#include <string>
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#endif
-
 #include "app/directory/Directory.h"
-#include "app/download/Flow/Dispatcher.h"
-#include "app/server/Installer/Installer.h"
+#include "app/download/Installer/Transfer/Transfer.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
-
-namespace {
-
-QString FromStd(const std::string& text) { return QString::fromStdString(text); }
-
-// 从主类判断加载器，够用就行，不解析 mod 目录
-QString LoaderFromMainClass(const std::string& main_class) {
-    if (main_class.find("fabric") != std::string::npos) return QStringLiteral("Fabric");
-    if (main_class.find("quilt") != std::string::npos) return QStringLiteral("Quilt");
-    if (main_class.find("neoforge") != std::string::npos) return QStringLiteral("NeoForge");
-    if (main_class.find("forge") != std::string::npos) return QStringLiteral("Forge");
-    // 1.16~1.20 的 Forge/NeoForge 都从 modlauncher 启动；没有 rml.json 的外部版本靠这个兜底
-    if (main_class.find("modlauncher") != std::string::npos) return QStringLiteral("Forge");
-    return QStringLiteral("原版");
-}
-
-std::string ContentLoaderId(const std::string& loader, const std::string& id) {
-    std::string value = loader;
-    if (value.empty()) {
-        if (id.find("-neoforge-") != std::string::npos) return "neoforge";
-        if (id.find("-forge-") != std::string::npos) return "forge";
-        if (id.find("-fabric-") != std::string::npos) return "fabric";
-        if (id.find("-quilt-") != std::string::npos) return "quilt";
-        return {};
-    }
-    for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (value == "forge") return "forge";
-    if (value == "neoforge") return "neoforge";
-    if (value == "fabric") return "fabric";
-    if (value == "quilt") return "quilt";
-    return {};
-}
-
-bool ContainsValue(const std::vector<std::string>& values, const std::string& wanted) {
-    for (const auto& value : values) {
-        if (value == wanted) return true;
-    }
-    return false;
-}
-
-bool ReadJsonFile(const std::string& path, Json::Value& out) {
-    const std::string text = tools::ReadTextFile(path);
-    if (text.empty()) return false;
-    Json json;
-    std::string error;
-    return json.Parse(text, out, error);
-}
-
-QStringList JsonStringList(const Json::Value& value) {
-    QStringList out;
-    if (!value.IsArray()) return out;
-    for (size_t i = 0; i < value.Size(); ++i) out << FromStd(value.At(i).AsString());
-    return out;
-}
-
-bool EndsWithJar(const std::string& path) {
-    if (path.size() < 4) return false;
-    std::string suffix = path.substr(path.size() - 4);
-    for (char& c : suffix) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return suffix == ".jar";
-}
-
-QString SourceKindLabel(const std::string& kind) {
-    if (kind == "mojang") return QStringLiteral("Mojang 版本清单");
-    if (kind == "assets") return QStringLiteral("Mojang 资源");
-    if (kind == "forge") return QStringLiteral("Forge maven");
-    if (kind == "neoforge") return QStringLiteral("NeoForge maven");
-    if (kind == "fabric") return QStringLiteral("Fabric meta");
-    return FromStd(kind);
-}
-
-// 背景图带时间戳，换图时 URL 会变，QML 的 Image 才会重新加载
-QString CustomBackgroundFile() {
-    QDir dir(FromStd(Directory::DataRoot()));
-    const QStringList files =
-        dir.entryList({QStringLiteral("background*.png")}, QDir::Files, QDir::Time);
-    for (const QString& name : files) {
-        const QString path = dir.filePath(name);
-        if (QFile::exists(path)) return path;
-    }
-    return {};
-}
-
-void RemoveCustomBackgrounds(const QString& keep = QString()) {
-    QDir dir(FromStd(Directory::DataRoot()));
-    for (const QString& name : dir.entryList({QStringLiteral("background*.png")}, QDir::Files)) {
-        const QString path = dir.filePath(name);
-        if (!keep.isEmpty() && path == keep) continue;
-        QFile::remove(path);
-    }
-}
-
-}  // namespace
+#include "include/AccountProvider.h"
 
 Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent)
     : QObject(parent),
       launch_(launch),
       account_name_(std::move(account_name)),
-      memory_mb_(memory_mb) {
-    RefreshVersionList();
-
-    if (!versions_.isEmpty()) {
-        // 尊重 settings.json 里的选择；只有没有选择时才退到第一个
-        const std::string saved = launch_.Versions().Selected();
-        if (!saved.empty() && version_ids_.contains(FromStd(saved))) {
-            selected_ = FromStd(saved);
-            selected_index_ = version_ids_.indexOf(selected_);
-        } else {
-            selected_index_ = 0;
-            selected_ = versions_.first();
-            launch_.Versions().Select(version_ids_.first().toStdString());
-        }
-        UpdateDetails();
-    }
-
-    const auto& javas = launch_.Tools().Javas();
-    (void)javas;
-    RefreshJavas();
-    if (javas_.isEmpty()) java_info_ = QStringLiteral("未发现 Java");
-
-    // 内容源：Modrinth / CurseForge（缺 key 的会标注出来）
-    for (auto* source : launch_.Downloader().Sources().Sources()) {
-        std::string reason;
-        const bool ready = source->Ready(reason);
-        content_sources_ << QStringLiteral("%1%2")
-                                .arg(FromStd(source->DisplayName()))
-                                .arg(ready ? QString() : QStringLiteral("（%1）").arg(FromStd(reason)));
-    }
-
+      memory_mb_(memory_mb),
+      versions_(launch),
+      downloads_(
+          launch, this, [this] { emit downloadChanged(); }, [this] { emit changed(); },
+          [this](const std::string& id) { versions_.SelectInstalled(id); }) {
     connect(&status_timer_, &QTimer::timeout, this, &Bridge::RefreshStatus);
     status_timer_.start(1000);
 }
 
-QString Bridge::GameDir() const { return FromStd(launch_.Versions().GameDir()); }
+QString Bridge::GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
 
-QString Bridge::BackgroundUrl() const {
-    const QString custom = CustomBackgroundFile();
-    if (!custom.isEmpty()) return QUrl::fromLocalFile(custom).toString();
+QString Bridge::BackgroundUrl() const { return BridgeBackground::Url(); }
 
-    // 部署后优先用 exe 旁边的 qml/assets
-    const QString local = QCoreApplication::applicationDirPath() +
-                          QStringLiteral("/qml/assets/background.png");
-    if (QFile::exists(local)) return QUrl::fromLocalFile(local).toString();
+bool Bridge::HasCustomBackground() const { return BridgeBackground::Has(); }
 
-    return QUrl::fromLocalFile(QStringLiteral(RML_QML_DIR "/assets/background.png")).toString();
+QVariantList Bridge::SourceRecords() const {
+    return BridgeSourceRecords::Records(launch_.Downloader().Sources().Origins());
 }
 
-bool Bridge::HasCustomBackground() const { return !CustomBackgroundFile().isEmpty(); }
+QVariantList Bridge::SourceKindOptions() const { return BridgeSourceRecords::KindOptions(); }
 
 void Bridge::setBackground(const QString& path) {
-    // QML 的 FileDialog 给的是 file:/// URL，这里统一成本地路径
-    QString local = path;
-    const QUrl url(path);
-    if (url.isLocalFile()) local = url.toLocalFile();
-
-    const QImage image(local);
-    if (image.isNull()) {
-        status_ = QStringLiteral("背景图读取失败：%1").arg(local);
+    QString error;
+    if (!BridgeBackground::Set(path, error)) {
+        status_ = error;
         emit changed();
         return;
     }
 
-    const QString data_root = FromStd(Directory::DataRoot());
-    QDir().mkpath(data_root);
-    const QString target =
-        data_root + QStringLiteral("/background-%1.png")
-                       .arg(QDateTime::currentMSecsSinceEpoch());
-    if (!image.save(target, "PNG")) {
-        status_ = QStringLiteral("背景图保存失败：%1").arg(target);
-        emit changed();
-        return;
-    }
-
-    RemoveCustomBackgrounds(target);
     status_ = QStringLiteral("背景图已更新");
     emit changed();
 }
 
 void Bridge::resetBackground() {
-    RemoveCustomBackgrounds();
+    BridgeBackground::Reset();
     status_ = QStringLiteral("已恢复默认背景");
     emit changed();
 }
 
-QString Bridge::SelectedName() const {
-    if (selected_index_ >= 0 && selected_index_ < versions_.size()) {
-        return versions_.at(selected_index_);
+void Bridge::saveSource(int index, const QString& name, const QString& url) {
+    auto& origins = launch_.Downloader().Sources().Origins();
+    if (BridgeSourceRecords::Update(origins, index, name, url)) SaveSources();
+}
+
+void Bridge::addSource(const QString& kind, const QString& name, const QString& url) {
+    QString error;
+    if (!BridgeSourceRecords::Add(launch_.Downloader().Sources().Origins(), kind, name, url,
+                                  error)) {
+        status_ = error;
+        emit changed();
+        return;
     }
-    return selected_;
+    SaveSources();
+}
+
+void Bridge::removeSource(int index) {
+    if (BridgeSourceRecords::Remove(launch_.Downloader().Sources().Origins(), index)) {
+        SaveSources();
+    }
+}
+
+void Bridge::resetSources() {
+    BridgeSourceRecords::Reset(launch_.Downloader().Sources().Origins());
+    SaveSources();
+}
+
+void Bridge::SaveSources() {
+    QString error;
+    if (!BridgeSourceRecords::Save(launch_.Downloader().Sources().Origins(), error)) {
+        status_ = QStringLiteral("软件源保存失败：%1").arg(error);
+    } else {
+        status_ = QStringLiteral("软件源已保存");
+    }
+    emit sourcesChanged();
+    emit changed();
 }
 
 void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& jvmArgs) {
@@ -239,146 +112,28 @@ void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& 
     emit changed();
 }
 
-QVariantList Bridge::SourceKindOptions() const {
-    QVariantList out;
-    for (const auto& kind : download::versionsource::Sources::Kinds()) {
-        QVariantMap map;
-        map["kind"] = FromStd(kind);
-        map["label"] = SourceKindLabel(kind);
-        out.append(map);
-    }
-    return out;
-}
-
-QVariantList Bridge::SourceRecords() const {
-    QVariantList out;
-    for (const auto& record : launch_.Downloader().Sources().Origins().Records()) {
-        QVariantMap map;
-        map["kind"] = FromStd(record.kind);
-        map["kindLabel"] = SourceKindLabel(record.kind);
-        map["name"] = FromStd(record.name);
-        map["url"] = FromStd(record.url);
-        out.append(map);
-    }
-    return out;
-}
-
-void Bridge::saveSource(int index, const QString& name, const QString& url) {
-    auto& origins = launch_.Downloader().Sources().Origins();
-    if (index < 0 || static_cast<size_t>(index) >= origins.Records().size()) return;
-    origins.Update(static_cast<size_t>(index), name.trimmed().toStdString(),
-                   url.trimmed().toStdString());
-    SaveSources();
-}
-
-void Bridge::addSource(const QString& kind, const QString& name, const QString& url) {
-    if (!download::versionsource::Sources::KnownKind(kind.toStdString())) {
-        status_ = QStringLiteral("不认识的软件源类型：%1").arg(kind);
-        emit changed();
-        return;
-    }
-    launch_.Downloader().Sources().Origins().Add(kind.toStdString(), name.trimmed().toStdString(),
-                                                 url.trimmed().toStdString());
-    SaveSources();
-}
-
-void Bridge::removeSource(int index) {
-    auto& origins = launch_.Downloader().Sources().Origins();
-    if (index < 0 || static_cast<size_t>(index) >= origins.Records().size()) return;
-    origins.Remove(static_cast<size_t>(index));
-    SaveSources();
-}
-
-void Bridge::resetSources() {
-    launch_.Downloader().Sources().Origins().ResetDefaults();
-    SaveSources();
-}
-
-void Bridge::SaveSources() {
-    std::string error;
-    if (!launch_.Downloader().Sources().Origins().Save(error)) {
-        status_ = QStringLiteral("软件源保存失败：%1").arg(FromStd(error));
-    } else {
-        status_ = QStringLiteral("软件源已保存");
-    }
-    emit sourcesChanged();
-    emit changed();
-}
-
 void Bridge::selectVersion(const QString& id) {
-    if (!launch_.Versions().Select(id.toStdString())) return;
-    selected_ = id;
-    UpdateDetails();
+    if (versions_.Select(id)) emit changed();
+}
+
+void Bridge::selectVersionAt(int index) {
+    if (versions_.SelectAt(index)) emit changed();
+}
+
+void Bridge::openVersionFolderAt(int index) { versions_.OpenFolderAt(index); }
+
+void Bridge::deleteVersionAt(int index) {
+    versions_.DeleteAt(index);
     emit changed();
 }
 
-void Bridge::UpdateDetails() {
-    launch::Version::Detail detail;
-    std::string error;
-    if (!launch_.Versions().LoadDetail(detail, error)) {
-        details_ = QStringLiteral("解析失败：%1").arg(FromStd(error));
-        emit changed();
-        return;
-    }
-
-    const auto& java = launch_.Tools().Pick(detail.java_major);
-    QString java_line = java ? QStringLiteral("使用时 %1（Java %2）").arg(FromStd(java->path)).arg(java->major)
-                             : QStringLiteral("没有可用 Java");
-
-    loader_ = LoaderFromMainClass(detail.main_class);
-
-    // 版本来源：RML 装的有 rml.json 标记，其余是外部放进来的
-    QString origin = QStringLiteral("外部版本");
-    for (const auto& entry : launch_.Versions().Entries()) {
-        if (entry.id != selected_.toStdString()) continue;
-        if (!entry.loader.empty()) loader_ = FromStd(entry.loader);
-        if (entry.managed) {
-            origin = entry.loader.empty() ? QStringLiteral("RML 安装")
-                                          : QStringLiteral("RML 安装 · %1").arg(FromStd(entry.loader));
-            if (!entry.complete) origin += QStringLiteral("（未完成）");
-        }
-        break;
-    }
-
-    details_ = QStringLiteral("%1\n需要 Java %2\n库文件 %3 个\n客户端 jar %4")
-                   .arg(origin)
-                   .arg(detail.java_major)
-                   .arg(detail.libraries.size())
-                   .arg(detail.client_jar.empty() ? QStringLiteral("缺失") : QStringLiteral("就绪"));
-    java_info_ = java_line;
+void Bridge::renameVersionAt(int index, const QString& name) {
+    versions_.RenameAt(index, name);
     emit changed();
-}
-
-void Bridge::RefreshJavas() {
-    javas_.clear();
-    java_options_.clear();
-    java_paths_.clear();
-
-    java_options_ << QStringLiteral("自动（推荐）");
-
-    for (const auto& java : launch_.Tools().Javas()) {
-        const bool managed = java.source == "RML";
-        const QString tag = managed ? QStringLiteral("RML 安装") : QStringLiteral("系统");
-
-        // 设置页：来源标记放尾部
-        javas_ << QStringLiteral("Java %1  ·  %2  ·  %3")
-                      .arg(java.major)
-                      .arg(FromStd(java.path))
-                      .arg(tag);
-
-        // 启动页下拉：短一点
-        java_options_ << QStringLiteral("Java %1  ·  %2").arg(java.major).arg(tag);
-        java_paths_ << FromStd(java.path);
-    }
 }
 
 void Bridge::selectJava(int index) {
-    if (index <= 0 || index > java_paths_.size()) {
-        java_path_override_.clear();
-    } else {
-        java_path_override_ = java_paths_.at(index - 1);
-    }
-    UpdateDetails();
+    versions_.SelectJava(index);
     emit changed();
 }
 
@@ -395,11 +150,11 @@ void Bridge::installJava(int major) {
             this,
             [this, ok, error, major] {
                 if (ok) {
-                    RefreshJavas();
-                    UpdateDetails();
+                    versions_.RefreshJavas();
+                    versions_.UpdateDetails();
                     status_ = QStringLiteral("Java %1 已安装到 RML 的运行时目录").arg(major);
                 } else {
-                    status_ = QStringLiteral("安装失败：%1").arg(FromStd(error));
+                    status_ = QStringLiteral("安装失败：%1").arg(QString::fromStdString(error));
                 }
                 busy_ = false;
                 emit changed();
@@ -413,8 +168,8 @@ void Bridge::launchGame() {
 
     Directory paths(launch_.Versions().GameDir());
     std::string mods_error;
-    const std::string content_loader = SelectedContentLoader();
-    const Directory::VersionEntry* entry = SelectedEntry();
+    const std::string content_loader = versions_.SelectedContentLoader();
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
     if (!content_loader.empty() && entry != nullptr) {
         // 有加载器的版本使用独立 gameDir，Forge/Fabric 才会加载 versions/<id>/mods
         if (!paths.EnsureInstalledModsRoot(entry->id, mods_error)) {
@@ -441,7 +196,7 @@ void Bridge::launchGame() {
 
     launch::Starter::Options options;
     options.memory_mb = memory_mb_;
-    options.java_path = java_path_override_.toStdString();
+    options.java_path = versions_.JavaPathOverride().toStdString();
     options.gc = gc_mode_.toStdString();
     options.jvm_args = jvm_args_.toStdString();
     if (!content_loader.empty() && entry != nullptr) {
@@ -454,9 +209,7 @@ void Bridge::launchGame() {
     // 缺文件不再让用户点“补齐”，直接作为错误处理路径自动补
     if (!launch_.GameStarter().Build(credentials, options, command, missing, error)) {
         if (missing.empty()) {
-            QStringList lines;
-            lines << QStringLiteral("无法启动：%1").arg(FromStd(error));
-            status_ = lines.join('\n');
+            status_ = QStringLiteral("无法启动：%1").arg(QString::fromStdString(error));
             repair_failed_ = true;
             emit changed();
             return;
@@ -485,7 +238,7 @@ void Bridge::launchGame() {
                         status_ = QStringLiteral("自动补齐 %1/%2  %3")
                                       .arg(done)
                                       .arg(total)
-                                      .arg(FromStd(label));
+                                      .arg(QString::fromStdString(label));
                         emit changed();
                     },
                     Qt::QueuedConnection);
@@ -521,18 +274,23 @@ void Bridge::launchGame() {
                         status_ = QStringLiteral("已取消自动补齐");
                     } else if (!repaired) {
                         repair_failed_ = true;
-                        status_ = QStringLiteral("自动补齐失败：%1").arg(FromStd(repair_error));
+                        status_ = QStringLiteral("自动补齐失败：%1")
+                                      .arg(QString::fromStdString(repair_error));
                     } else if (!built) {
                         repair_failed_ = true;
                         QStringList lines;
-                        lines << QStringLiteral("补齐后仍无法启动：%1").arg(FromStd(retry_error));
+                        lines << QStringLiteral("补齐后仍无法启动：%1")
+                                     .arg(QString::fromStdString(retry_error));
                         for (const auto& item : retry_missing) {
-                            lines << QStringLiteral("· %1（%2）").arg(FromStd(item.what)).arg(FromStd(item.hint));
+                            lines << QStringLiteral("· %1（%2）")
+                                         .arg(QString::fromStdString(item.what))
+                                         .arg(QString::fromStdString(item.hint));
                         }
                         status_ = lines.join('\n');
                     } else if (!started) {
                         repair_failed_ = true;
-                        status_ = QStringLiteral("启动失败：%1").arg(FromStd(retry_error));
+                        status_ =
+                            QStringLiteral("启动失败：%1").arg(QString::fromStdString(retry_error));
                     } else {
                         busy_ = true;
                         repair_failed_ = false;
@@ -546,7 +304,7 @@ void Bridge::launchGame() {
         return;
     }
     if (!launch_.GameStarter().Start(command, error)) {
-        status_ = QStringLiteral("启动失败：%1").arg(FromStd(error));
+        status_ = QStringLiteral("启动失败：%1").arg(QString::fromStdString(error));
         repair_failed_ = true;
         repairing_ = false;
         emit changed();
@@ -569,722 +327,69 @@ void Bridge::cancelLaunchRepair() {
     emit changed();
 }
 
-ContentSource* Bridge::selectedSource() {
-    auto sources = launch_.Downloader().Sources().Sources();
-    if (content_source_ < 0 || static_cast<size_t>(content_source_) >= sources.size()) {
-        return sources.empty() ? nullptr : sources.front();
-    }
-    return sources[static_cast<size_t>(content_source_)];
-}
-
-void Bridge::selectContentSource(int index) {
-    content_source_ = index;
-    emit downloadChanged();
-}
-
-void Bridge::loadGameVersions() {
-    if (download_busy_) return;
-    download_busy_ = true;
-    download_failed_ = false;
-    download_progress_ = 0.0;
-    download_status_ = QStringLiteral("正在获取版本清单…");
-    emit downloadChanged();
-
-    std::thread([this] {
-        std::vector<download::versionsource::Mojang::Entry> entries;
-        std::string error;
-        const bool ok = launch_.Downloader().Sources().Game().List(entries, error);
-
-        QStringList release, snapshot, april;
-        QStringList release_ids, snapshot_ids, april_ids;
-        if (ok) {
-            for (const auto& entry : entries) {
-                const QString id = FromStd(entry.id);
-                switch (entry.kind) {
-                    case download::versionsource::Mojang::Kind::Release:
-                        release << id;
-                        release_ids << id;
-                        break;
-                    case download::versionsource::Mojang::Kind::AprilFools:
-                        april << id;
-                        april_ids << id;
-                        break;
-                    default:
-                        snapshot << id;
-                        snapshot_ids << id;
-                        break;
-                }
-            }
-        }
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, release, snapshot, april, release_ids, snapshot_ids, april_ids, error] {
-                release_versions_ = release;
-                snapshot_versions_ = snapshot;
-                april_versions_ = april;
-                release_ids_ = release_ids;
-                snapshot_ids_ = snapshot_ids;
-                april_ids_ = april_ids;
-                download_status_ =
-                    ok ? QStringLiteral("正式 %1 · 测试 %2 · 愚人节 %3")
-                             .arg(release.size())
-                             .arg(snapshot.size())
-                             .arg(april.size())
-                       : QStringLiteral("获取失败：%1").arg(FromStd(error));
-                download_busy_ = false;
-                download_failed_ = !ok;
-                download_progress_ = ok ? 1.0 : 0.0;
-                emit downloadChanged();
-            },
-            Qt::QueuedConnection);
-    }).detach();
-}
+void Bridge::loadGameVersions() { downloads_.LoadGameVersions(); }
 
 void Bridge::installGame(int kind, int index, const QString& loader) {
-    if (download_busy_) return;
+    downloads_.InstallGame(kind, index, loader);
+}
 
-    const QStringList* ids = &release_ids_;
-    if (kind == 1) ids = &snapshot_ids_;
-    if (kind == 2) ids = &april_ids_;
-    if (index < 0 || index >= ids->size()) return;
+void Bridge::installGameWithLoader(int kind, int index, const QString& loader,
+                                   const QString& loaderVersion) {
+    downloads_.InstallGame(kind, index, loader, loaderVersion);
+}
 
-    const std::string mc_version = ids->at(index).toStdString();
-    const std::string loader_name = loader.toStdString();
-
-    const bool known = loader_name == "原版" || loader_name == "Fabric" ||
-                       loader_name == "Forge" || loader_name == "NeoForge";
-    if (!known) {
-        download_status_ = QStringLiteral("不认识的加载器：%1").arg(loader);
-        emit downloadChanged();
-        return;
-    }
-
-    download_busy_ = true;
-    download_failed_ = false;
-    download_progress_ = 0.0;
-    installing_version_ = FromStd(mc_version);
-    launch_.Downloader().Installers().Transfers().ResetCancel();
-    download_status_ = QStringLiteral("正在安装 %1（%2）…").arg(FromStd(mc_version)).arg(loader);
-    emit downloadChanged();
-
-    std::thread([this, mc_version, loader_name] {
-        download::flow::Context context{launch_.Versions(), launch_.Tools(),
-                                        launch_.Downloader().Sources(),
-                                        launch_.Downloader().Installers()};
-
-        download::flow::Request request;
-        request.game_dir = launch_.Versions().GameDir();
-        request.mc_version = mc_version;
-        request.loader = loader_name;
-
-        auto progress = [this](const std::string& label, int done, int total) {
-            if (done != total && done % 4 != 0) return;
-            const double fraction = total > 0 ? static_cast<double>(done) / total : 0.0;
-            QMetaObject::invokeMethod(
-                this,
-                [this, label, fraction] {
-                    download_progress_ = fraction;
-                    download_status_ = QStringLiteral("%1  %2%")
-                                           .arg(FromStd(label))
-                                           .arg(static_cast<int>(fraction * 100.0));
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-        };
-
-        download::flow::Outcome outcome;
-        std::string error;
-        const bool ok = download::flow::Dispatcher().Run(context, request, progress, outcome, error);
-
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, outcome, error, loader_name] {
-                installing_version_.clear();
-                download_busy_ = false;
-                download_failed_ = !ok;
-                RefreshVersionList();
-                if (ok) download_progress_ = 1.0;
-                if (ok) {
-                    launch_.Versions().Select(outcome.version_id);
-                    const int row = version_ids_.indexOf(FromStd(outcome.version_id));
-                    if (row >= 0) {
-                        selected_ = FromStd(outcome.version_id);
-                        selected_index_ = row;
-                    }
-                    UpdateDetails();
-                    const QString version_tag = outcome.loader_version.empty()
-                                                    ? QString()
-                                                    : QStringLiteral(" %1").arg(FromStd(outcome.loader_version));
-                    download_status_ = QStringLiteral("安装完成：%1（%2%3）")
-                                           .arg(FromStd(outcome.version_id))
-                                           .arg(FromStd(loader_name))
-                                           .arg(version_tag);
-                } else {
-                    download_status_ = QStringLiteral("安装失败：%1").arg(FromStd(error));
-                }
-                emit downloadChanged();
-                emit changed();
-            },
-            Qt::QueuedConnection);
-    }).detach();
+void Bridge::loadLoaderVersions(const QString& mcVersion, const QString& loader) {
+    downloads_.LoadLoaderVersions(mcVersion, loader);
 }
 
 void Bridge::installServer(int kind, int index, const QString& loader) {
-    if (download_busy_) return;
-
-    const QStringList* ids = &release_ids_;
-    if (kind == 1) ids = &snapshot_ids_;
-    if (kind == 2) ids = &april_ids_;
-    if (index < 0 || index >= ids->size()) return;
-
-    const std::string mc_version = ids->at(index).toStdString();
-    const std::string loader_name = loader.toStdString();
-    if (loader_name != "原版" && loader_name != "Fabric") {
-        download_status_ = QStringLiteral("服务端暂不支持 %1（当前只有原版和 Fabric）").arg(loader);
-        emit downloadChanged();
-        return;
-    }
-
-    download_busy_ = true;
-    download_failed_ = false;
-    download_progress_ = 0.0;
-    launch_.Downloader().Installers().Transfers().ResetCancel();
-    download_status_ = QStringLiteral("正在下载 %1 服务端（%2）…")
-                           .arg(FromStd(mc_version))
-                           .arg(loader);
-    emit downloadChanged();
-
-    std::thread([this, mc_version, loader_name] {
-        server::Installer installer(launch_.Versions(), launch_.Tools(),
-                                    launch_.Downloader().Sources(),
-                                    launch_.Downloader().Installers().Transfers());
-
-        auto progress = [this](const std::string& label, int done, int total) {
-            if (done != total && done % 16 != 0) return;
-            const double fraction = total > 0 ? static_cast<double>(done) / total : 0.0;
-            QMetaObject::invokeMethod(
-                this,
-                [this, label, fraction] {
-                    download_progress_ = fraction;
-                    download_status_ = QStringLiteral("%1  %2%")
-                                           .arg(FromStd(label))
-                                           .arg(static_cast<int>(fraction * 100.0));
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-        };
-
-        std::string version_id;
-        std::string error;
-        const bool ok = loader_name == "Fabric"
-                            ? installer.Fabric(mc_version, progress, version_id, error)
-                            : installer.Vanilla(mc_version, progress, version_id, error);
-
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, version_id, error] {
-                download_busy_ = false;
-                download_failed_ = !ok;
-                if (ok) download_progress_ = 1.0;
-                download_status_ = ok ? QStringLiteral("服务端已下载：%1").arg(FromStd(version_id))
-                                      : QStringLiteral("服务端下载失败：%1").arg(FromStd(error));
-                emit downloadChanged();
-            },
-            Qt::QueuedConnection);
-    }).detach();
-}
-
-
-std::string Bridge::versionIdAt(int index) const {
-    if (index < 0 || index >= version_ids_.size()) return {};
-    return version_ids_.at(index).toStdString();
-}
-
-const Directory::VersionEntry* Bridge::SelectedEntry() const {
-    for (const auto& entry : launch_.Versions().Entries()) {
-        if (entry.id == selected_.toStdString()) return &entry;
-    }
-    return nullptr;
-}
-
-std::string Bridge::SelectedMinecraftVersion() const {
-    const Directory::VersionEntry* entry = SelectedEntry();
-    return entry == nullptr ? std::string() : entry->minecraft_version;
-}
-
-std::string Bridge::SelectedContentLoader() const {
-    const Directory::VersionEntry* entry = SelectedEntry();
-    if (entry == nullptr) return {};
-    return ContentLoaderId(entry->loader, entry->id);
-}
-
-void Bridge::selectVersionAt(int index) {
-    const std::string id = versionIdAt(index);
-    if (id.empty() || !launch_.Versions().Select(id)) return;
-    selected_ = FromStd(id);
-    selected_index_ = index;
-    UpdateDetails();
-    emit changed();
-}
-
-void Bridge::openVersionFolderAt(int index) {
-    const std::string id = versionIdAt(index);
-    if (id.empty()) return;
-    const std::string dir = launch_.Versions().VersionDir(id);
-#ifdef _WIN32
-    const std::wstring wide(dir.begin(), dir.end());
-    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-#else
-    (void)dir;
-#endif
-}
-
-void Bridge::deleteVersionAt(int index) {
-    const std::string id = versionIdAt(index);
-    if (id.empty()) return;
-
-    const std::string dir = launch_.Versions().VersionDir(id);
-    std::error_code ec;
-    std::filesystem::remove_all(tools::ToPath(dir), ec);
-
-    launch_.Versions().Refresh();
-    RefreshVersionList();
-    if (versions_.isEmpty()) {
-        selected_.clear();
-        selected_index_ = -1;
-        details_.clear();
-    } else {
-        selectVersionAt(qMin(index, static_cast<int>(versions_.size()) - 1));
-    }
-    emit changed();
-}
-
-void Bridge::renameVersionAt(int index, const QString& name) {
-    const std::string id = versionIdAt(index);
-    if (id.empty() || name.trimmed().isEmpty()) return;
-    launch_.Versions().Rename(id, name.trimmed().toStdString());
-    RefreshVersionList();
-    emit changed();
-}
-
-
-void Bridge::RefreshVersionList() {
-    launch_.Versions().Refresh();
-    versions_.clear();
-    version_ids_.clear();
-    for (const auto& entry : launch_.Versions().Entries()) {
-        // 服务端安装不参与启动页
-        if (entry.is_server) continue;
-        // 安装中途失败的托管版本不进入启动页，避免点进去直接退出码 1
-        if (entry.managed && !entry.complete) continue;
-        versions_ << FromStd(entry.name);
-        version_ids_ << FromStd(entry.id);
-    }
-
-    selected_ = FromStd(launch_.Versions().Selected());
-    selected_index_ = version_ids_.indexOf(selected_);
+    downloads_.InstallServer(kind, index, loader);
 }
 
 void Bridge::searchContent(const QString& query, const QString& kind) {
-    if (download_busy_) return;
-
-    const std::string mc_version = SelectedMinecraftVersion();
-    const std::string loader = SelectedContentLoader();
-    if (mc_version.empty()) {
-        download_status_ = QStringLiteral("先选择一个游戏版本，再搜索内容");
-        emit downloadChanged();
-        return;
-    }
-    if (kind == QStringLiteral("mod") && loader.empty()) {
-        download_status_ = QStringLiteral("当前版本没有 Mod 加载器，不能安装 Mod");
-        emit downloadChanged();
-        return;
-    }
-
-    content_kind_ = kind;
-    download_busy_ = true;
-    download_failed_ = false;
-    download_status_ = QStringLiteral("正在搜索…");
-    emit downloadChanged();
-
-    const std::string text = query.toStdString();
-    std::thread([this, text, loader, mc_version] {
-        std::vector<ContentSource::Project> projects;
-        std::string error;
-        bool ok = selectedSource()->Search(text, loader, mc_version, projects, error);
-
-        QStringList titles;
-        QStringList names;
-        QStringList ids;
-        if (ok) {
-            for (const auto& project : projects) {
-                titles << QStringLiteral("%1  ·  %2").arg(FromStd(project.title)).arg(FromStd(project.slug));
-                names << FromStd(project.title);
-                ids << FromStd(project.id);
-            }
-        }
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, titles, names, ids, error] {
-                content_results_ = titles;
-                content_names_ = names;
-                content_ids_ = ids;
-                download_status_ = ok ? QStringLiteral("找到 %1 个结果").arg(titles.size())
-                                      : QStringLiteral("搜索失败：%1").arg(FromStd(error));
-                download_busy_ = false;
-                download_failed_ = !ok;
-                emit downloadChanged();
-            },
-            Qt::QueuedConnection);
-    }).detach();
+    downloads_.SearchContent(query, kind, versions_.SelectedMinecraftVersion(),
+                             versions_.SelectedContentLoader());
 }
 
-void Bridge::installContent(int index) {    if (download_busy_ || index < 0 || index >= content_ids_.size()) return;
+void Bridge::installContent(int index) {
+    downloads_.InstallContent(index, versions_.SelectedMinecraftVersion(),
+                              versions_.SelectedContentLoader(), launch_.Versions().GameDir());
+}
 
-    const std::string project_id = content_ids_.at(index).toStdString();
-    const std::string project_name = content_names_.value(index).toStdString();
-    const std::string kind = content_kind_.toStdString();
-    const std::string instance_dir = launch_.Versions().GameDir();
-    const std::string mc_version = SelectedMinecraftVersion();
-    const std::string loader = SelectedContentLoader();
-    if (mc_version.empty()) {
-        download_status_ = QStringLiteral("先选择一个游戏版本，再安装内容");
-        emit downloadChanged();
-        return;
-    }
-    if (kind == "mod" && loader.empty()) {
-        download_status_ = QStringLiteral("当前版本没有 Mod 加载器，不能安装 Mod");
-        emit downloadChanged();
-        return;
-    }
+void Bridge::selectContentSource(int index) { downloads_.SelectSource(index); }
 
-    download_busy_ = true;
-    download_failed_ = false;
-    download_progress_ = 0.0;
-    launch_.Downloader().Installers().Transfers().ResetCancel();
-    download_status_ = QStringLiteral("正在查找适配 %1 的版本…").arg(FromStd(mc_version));
-    emit downloadChanged();
-
-    std::thread([this, project_id, project_name, kind, instance_dir, loader, mc_version] {
-        std::vector<ContentSource::Version> versions;
-        std::string error;
-        auto& installer = launch_.Downloader().Installers();
-
-        if (!selectedSource()->Versions(project_id, loader, mc_version, versions, error)) {
-            QMetaObject::invokeMethod(
-                this,
-                [this, error] {
-                    download_status_ = QStringLiteral("解析失败：%1").arg(FromStd(error));
-                    download_busy_ = false;
-                    download_failed_ = true;
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-            return;
-        }
-
-        const ContentSource::Version* chosen = nullptr;
-        for (const auto& version : versions) {
-            if (version.files.empty()) continue;
-            if (!version.game_versions.empty() &&
-                !ContainsValue(version.game_versions, mc_version)) {
-                continue;
-            }
-            if (kind == "mod" && !version.loaders.empty() &&
-                !ContainsValue(version.loaders, loader)) {
-                continue;
-            }
-            chosen = &version;
-            break;
-        }
-
-        if (chosen == nullptr) {
-            const QString reason = kind == "mod" && !loader.empty()
-                                       ? QStringLiteral("没有适配 %1（%2）的版本")
-                                             .arg(FromStd(mc_version))
-                                             .arg(FromStd(loader))
-                                       : QStringLiteral("没有适配 %1 的版本").arg(FromStd(mc_version));
-            QMetaObject::invokeMethod(
-                this,
-                [this, reason] {
-                    download_status_ = reason;
-                    download_busy_ = false;
-                    download_failed_ = true;
-                    emit downloadChanged();
-                },
-                Qt::QueuedConnection);
-            return;
-        }
-
-        const auto& file = chosen->files.front();
-        download::installer::Placement::Kind placement_kind = download::installer::Placement::Kind::Mod;
-        if (kind == "shader") placement_kind = download::installer::Placement::Kind::Shaderpack;
-        if (kind == "resourcepack") placement_kind = download::installer::Placement::Kind::Resourcepack;
-
-        download::installer::Transfer::Task task;
-        task.url = file.url;
-        task.sha1 = file.sha1;
-        task.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
-                                                            file.filename, true);
-        task.label = file.filename;
-        task.size = file.size;
-
-        download::installer::Transfer::Result result;
-        bool ok = installer.Transfers().Run({task}, {}, result, error);
-
-        if (ok && kind == "mod") {
-            Json::Value meta = Json::Value::Object();
-            meta.Set("file", Json::Value::String(file.filename));
-            meta.Set("project", Json::Value::String(project_id));
-            meta.Set("name", Json::Value::String(project_name.empty() ? project_id : project_name));
-            meta.Set("version", Json::Value::String(
-                                    chosen->name.empty() ? chosen->version_number : chosen->name));
-            meta.Set("side", Json::Value::String("both"));
-            meta.Set("sha1", Json::Value::String(file.sha1));
-            Json::Value game_versions = Json::Value::Array();
-            for (const auto& value : chosen->game_versions) {
-                game_versions.Push(Json::Value::String(value));
-            }
-            Json::Value loaders = Json::Value::Array();
-            for (const auto& value : chosen->loaders) {
-                loaders.Push(Json::Value::String(value));
-            }
-            meta.Set("gameVersions", game_versions);
-            meta.Set("loaders", loaders);
-            if (!tools::WriteTextFile(task.dest + ".rml.json", meta.Dump())) {
-                ok = false;
-                error = "写入 Mod 仓库描述失败: " + task.dest;
-            }
-        }
-
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, error, file] {
-                download_status_ = ok ? QStringLiteral("已下载到 Mod 仓库：%1").arg(FromStd(file.filename))
-                                      : QStringLiteral("安装失败：%1").arg(FromStd(error));
-                download_busy_ = false;
-                download_failed_ = !ok;
-                if (ok) download_progress_ = 1.0;
-                emit downloadChanged();
-            },
-            Qt::QueuedConnection);
-    }).detach();
+QVariantList Bridge::installedMods() {
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
+    if (entry == nullptr) return {};
+    return mods_.Installed(launch_.Versions().GameDir(), *entry);
 }
 
 QVariantList Bridge::repositoryMods() {
-    repository_items_.clear();
-    const Directory::VersionEntry* entry = SelectedEntry();
-    if (entry == nullptr) return repository_items_;
-
-    const std::string mc_version = entry->minecraft_version;
-    const std::string loader = ContentLoaderId(entry->loader, entry->id);
-    const Directory paths(launch_.Versions().GameDir());
-    const std::string repo = paths.RepositoryModsRoot();
-
-    std::vector<std::string> files;
-    std::error_code ec;
-    for (const auto& item : std::filesystem::directory_iterator(tools::ToPath(repo), ec)) {
-        if (ec || !item.is_regular_file()) continue;
-        const auto name = item.path().filename().u8string();
-        const std::string file(name.begin(), name.end());
-        if (EndsWithJar(file)) files.push_back(file);
-    }
-    std::sort(files.begin(), files.end());
-
-    for (const auto& file : files) {
-        QVariantMap info;
-        info["file"] = FromStd(file);
-        info["name"] = FromStd(file);
-        info["version"] = QString();
-        info["project"] = QString();
-        info["path"] = FromStd(tools::JoinPath(repo, file));
-        info["known"] = false;
-        info["compatible"] = false;
-        info["reason"] = QStringLiteral("缺少版本描述，请重新下载");
-
-        Json::Value meta;
-        if (ReadJsonFile(info["path"].toString().toStdString() + ".rml.json", meta)) {
-            const QStringList game_versions = JsonStringList(meta["gameVersions"]);
-            const QStringList loaders = JsonStringList(meta["loaders"]);
-            const bool mc_ok = !mc_version.empty() && game_versions.contains(FromStd(mc_version));
-            const bool loader_ok =
-                !loader.empty() && loaders.contains(FromStd(loader));
-            info["known"] = true;
-            info["project"] = FromStd(meta["project"].AsString());
-            info["name"] = FromStd(meta["name"].AsString());
-            info["version"] = FromStd(meta["version"].AsString());
-            info["sha1"] = FromStd(meta["sha1"].AsString());
-            info["gameVersions"] = game_versions;
-            info["loaders"] = loaders;
-            info["compatible"] = mc_ok && loader_ok;
-            info["reason"] = info["compatible"].toBool()
-                                 ? QString()
-                                 : QStringLiteral("不适用于当前版本或加载器");
-        }
-        repository_items_.append(info);
-    }
-    return repository_items_;
-}
-
-QVariantList Bridge::installedMods() {
-    installed_items_.clear();
-    const Directory::VersionEntry* entry = SelectedEntry();
-    if (entry == nullptr) return installed_items_;
-
-    const Directory paths(launch_.Versions().GameDir());
-    const std::string mods_dir = paths.InstalledModsRoot(entry->id);
-    const std::string manifest_path = paths.InstalledManifest(entry->id);
-
-    std::vector<std::string> listed;
-    Json::Value manifest;
-    if (ReadJsonFile(manifest_path, manifest) && manifest["mods"].IsArray()) {
-        for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
-            const Json::Value& item = manifest["mods"].At(i);
-            const std::string file = item["file"].AsString();
-            if (file.empty() || !tools::PathExists(tools::JoinPath(mods_dir, file))) continue;
-            QVariantMap info;
-            info["file"] = FromStd(file);
-            info["name"] = FromStd(item["name"].AsString());
-            info["version"] = FromStd(item["version"].AsString());
-            info["project"] = FromStd(item["project"].AsString());
-            info["path"] = FromStd(tools::JoinPath(mods_dir, file));
-            info["known"] = true;
-            installed_items_.append(info);
-            listed.push_back(file);
-        }
-    }
-
-    // 用户手动放进版本 mods 的文件也允许在列表里删除
-    std::error_code ec;
-    for (const auto& item : std::filesystem::directory_iterator(tools::ToPath(mods_dir), ec)) {
-        if (ec || !item.is_regular_file()) continue;
-        const auto name = item.path().filename().u8string();
-        const std::string file(name.begin(), name.end());
-        if (!EndsWithJar(file) || std::find(listed.begin(), listed.end(), file) != listed.end()) {
-            continue;
-        }
-        QVariantMap info;
-        info["file"] = FromStd(file);
-        info["name"] = FromStd(file);
-        info["version"] = QString();
-        info["project"] = QString();
-        info["path"] = FromStd(tools::JoinPath(mods_dir, file));
-        info["known"] = false;
-        installed_items_.append(info);
-    }
-    return installed_items_;
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
+    if (entry == nullptr) return {};
+    return mods_.Repository(launch_.Versions().GameDir(), *entry);
 }
 
 bool Bridge::installRepositoryMod(int index) {
-    const Directory::VersionEntry* entry = SelectedEntry();
-    if (entry == nullptr || index < 0 || index >= repository_items_.size()) return false;
-    const QVariantMap item = repository_items_.at(index).toMap();
-    if (!item["compatible"].toBool()) {
-        download_status_ = QStringLiteral("无法安装：%1").arg(item["reason"].toString());
-        emit downloadChanged();
-        return false;
-    }
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
+    if (entry == nullptr) return false;
 
-    const Directory paths(launch_.Versions().GameDir());
-    std::string error;
-    if (!paths.EnsureInstalledModsRoot(entry->id, error)) {
-        download_status_ = QString::fromStdString(error);
-        emit downloadChanged();
-        return false;
-    }
-
-    const std::string file = item["file"].toString().toStdString();
-    const std::string source = item["path"].toString().toStdString();
-    const std::string dest =
-        tools::JoinPath(paths.InstalledModsRoot(entry->id), file);
-    std::error_code ec;
-    std::filesystem::copy_file(tools::ToPath(source), tools::ToPath(dest),
-                               std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
-        download_status_ = QStringLiteral("安装到版本失败：%1").arg(FromStd(file));
-        emit downloadChanged();
-        return false;
-    }
-
-    // 清理旧逻辑产生的 (1)/(2) 副本
-    const size_t dot = file.find_last_of('.');
-    if (dot != std::string::npos) {
-        const std::string stem = file.substr(0, dot);
-        const std::string ext = file.substr(dot);
-        for (int n = 1; n <= 20; ++n) {
-            std::filesystem::remove(
-                tools::ToPath(tools::JoinPath(paths.InstalledModsRoot(entry->id),
-                                              stem + " (" + std::to_string(n) + ")" + ext)),
-                ec);
-        }
-    }
-
-    Json::Value manifest;
-    if (!ReadJsonFile(paths.InstalledManifest(entry->id), manifest)) {
-        manifest = Json::Value::Object();
-    }
-    Json::Value mods = manifest["mods"].IsArray() ? manifest["mods"] : Json::Value::Array();
-    Json::Value next = Json::Value::Array();
-    for (size_t i = 0; i < mods.Size(); ++i) {
-        if (mods.At(i)["file"].AsString() != file) next.Push(mods.At(i));
-    }
-    Json::Value record = Json::Value::Object();
-    record.Set("file", Json::Value::String(file));
-    record.Set("project", Json::Value::String(item["project"].toString().toStdString()));
-    record.Set("name", Json::Value::String(item["name"].toString().toStdString()));
-    record.Set("version", Json::Value::String(item["version"].toString().toStdString()));
-    record.Set("sha1", Json::Value::String(item["sha1"].toString().toStdString()));
-    Json::Value game_versions = Json::Value::Array();
-    for (const auto& value : item["gameVersions"].toStringList()) {
-        game_versions.Push(Json::Value::String(value.toStdString()));
-    }
-    Json::Value loaders = Json::Value::Array();
-    for (const auto& value : item["loaders"].toStringList()) {
-        loaders.Push(Json::Value::String(value.toStdString()));
-    }
-    record.Set("gameVersions", game_versions);
-    record.Set("loaders", loaders);
-    next.Push(record);
-    manifest.Set("mods", next);
-    if (!tools::WriteTextFile(paths.InstalledManifest(entry->id), manifest.Dump())) {
-        download_status_ = QStringLiteral("写入版本 Mod 清单失败");
-        emit downloadChanged();
-        return false;
-    }
-
-    download_status_ = QStringLiteral("已安装到 %1：%2")
-                           .arg(FromStd(entry->name))
-                           .arg(FromStd(file));
-    emit downloadChanged();
-    return true;
+    QString message;
+    const bool ok = mods_.Install(launch_.Versions().GameDir(), *entry, index, message);
+    if (message.isEmpty()) return false;
+    downloads_.SetStatus(message);
+    return ok;
 }
 
 bool Bridge::removeInstalledMod(int index) {
-    const Directory::VersionEntry* entry = SelectedEntry();
-    if (entry == nullptr || index < 0 || index >= installed_items_.size()) return false;
-    const QVariantMap item = installed_items_.at(index).toMap();
-    const std::string file = item["file"].toString().toStdString();
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
+    if (entry == nullptr) return false;
 
-    const Directory paths(launch_.Versions().GameDir());
-    std::error_code ec;
-    std::filesystem::remove(tools::ToPath(tools::JoinPath(paths.InstalledModsRoot(entry->id), file)),
-                            ec);
-
-    Json::Value manifest;
-    if (ReadJsonFile(paths.InstalledManifest(entry->id), manifest) && manifest["mods"].IsArray()) {
-        Json::Value next = Json::Value::Array();
-        for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
-            if (manifest["mods"].At(i)["file"].AsString() != file) {
-                next.Push(manifest["mods"].At(i));
-            }
-        }
-        manifest.Set("mods", next);
-        tools::WriteTextFile(paths.InstalledManifest(entry->id), manifest.Dump());
-    }
-
-    download_status_ = QStringLiteral("已从版本移除：%1").arg(FromStd(file));
-    emit downloadChanged();
-    return true;
+    QString message;
+    const bool ok = mods_.Remove(launch_.Versions().GameDir(), *entry, index, message);
+    if (message.isEmpty()) return false;
+    downloads_.SetStatus(message);
+    return ok;
 }
 
 void Bridge::RefreshStatus() {

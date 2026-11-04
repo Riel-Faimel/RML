@@ -1,5 +1,6 @@
 #include "app/download/VersionSource/NeoForge/NeoForge.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <vector>
 
@@ -104,6 +105,29 @@ bool NeoForge::Metadata(const std::string& url, std::string& xml, std::string& e
         return false;
     }
     cache_.Put(url, xml);
+    return true;
+}
+
+bool NeoForge::List(const std::string& mc_version, std::vector<std::string>& out,
+                    std::string& error) const {
+    out.clear();
+    const std::string root = sources_.NeoForgeRoot();
+    std::string xml;
+    if (mc_version == "1.20.1") {
+        if (!Metadata(ForgeMetadataUrl(root), xml, error)) return false;
+        for (const auto& candidate : XmlVersions(xml)) {
+            if (Matches(candidate, "1.20.1-47.1.", 3)) out.push_back(candidate);
+        }
+    } else {
+        if (!Metadata(NeoForgeMetadataUrl(root), xml, error)) return false;
+        const std::string prefix = VersionPrefix(mc_version);
+        const int segments = SegmentCount(prefix);
+        for (const auto& candidate : XmlVersions(xml)) {
+            if (Matches(candidate, prefix, segments)) out.push_back(candidate);
+        }
+    }
+    std::sort(out.begin(), out.end(),
+              [](const std::string& a, const std::string& b) { return Newer(a, b); });
     return true;
 }
 

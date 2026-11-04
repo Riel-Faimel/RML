@@ -12,8 +12,25 @@ Item {
     property string kind: "mod"
     property int versionKind: 0
     property var loaderChoice: ({})
+    property int pendingKind: 0
+    property int pendingIndex: -1
+    property string pendingLoader: ""
+    property string pendingMcVersion: ""
 
     function loaderFor(id) { return page.loaderChoice[id] || "原版" }
+
+    function installVersion(kind, index, loader, mcVersion) {
+        if (loader === "原版") {
+            bridge.installGame(kind, index, loader)
+            return
+        }
+        page.pendingKind = kind
+        page.pendingIndex = index
+        page.pendingLoader = loader
+        page.pendingMcVersion = mcVersion
+        bridge.loadLoaderVersions(mcVersion, loader)
+        loaderDialog.open()
+    }
 
     function setLoader(id, name) {
         var copy = {}
@@ -34,6 +51,58 @@ Item {
 
     // 默认就拉一次版本清单，不再依赖手动刷新
     Component.onCompleted: bridge.loadGameVersions()
+
+    SoftDialog {
+        id: loaderDialog
+        title: qsTr("选择 %1 版本").arg(page.pendingLoader)
+        okText: qsTr("关闭")
+        showCancel: false
+        width: 460
+        height: 460
+
+        Text {
+            Layout.fillWidth: true
+            text: bridge.loaderVersionsBusy
+                  ? qsTr("正在获取 %1 %2 的版本…").arg(page.pendingLoader).arg(page.pendingMcVersion)
+                  : bridge.loaderVersionsError
+            color: bridge.loaderVersionsError.length > 0 ? Theme.danger : Theme.textSecondary
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+            visible: bridge.loaderVersionsBusy || bridge.loaderVersionsError.length > 0
+        }
+
+        ListView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 6
+            model: bridge.loaderVersionOptions
+
+            delegate: RowLayout {
+                width: ListView.view.width
+                height: 38
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData
+                    color: Theme.text
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+
+                SoftButton {
+                    text: qsTr("安装")
+                    primary: true
+                    onClicked: {
+                        bridge.installGameWithLoader(page.pendingKind, page.pendingIndex,
+                                                     page.pendingLoader, modelData)
+                        loaderDialog.close()
+                    }
+                }
+            }
+        }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -307,7 +376,9 @@ Item {
                                     color: parent.enabled ? Theme.primary : "#99FFFFFF"
                                 }
                                 onClicked: page.category === "version"
-                                               ? bridge.installGame(page.versionKind, index, page.loaderFor(versionRow.versionId))
+                                               ? page.installVersion(page.versionKind, index,
+                                                                    page.loaderFor(versionRow.versionId),
+                                                                    versionRow.versionId)
                                                : bridge.installContent(index)
                             }
                         }

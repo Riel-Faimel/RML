@@ -17,8 +17,11 @@ bool Fabric::RunImpl(const Context& context, const Request& request, const Progr
     if (!Support::EnsureVanillaJson(context, mc_version, error)) return false;
 
     Support::Report(progress, "获取 Fabric 加载器", 12);
-    std::string loader_version;
-    if (!context.sources.Loaders().FabricLatest(mc_version, loader_version, error)) return false;
+    std::string loader_version = request.loader_version;
+    if (loader_version.empty() &&
+        !context.sources.Loaders().FabricLatest(mc_version, loader_version, error)) {
+        return false;
+    }
 
     std::string version_json;
     if (!context.sources.Loaders().FabricProfile(mc_version, loader_version, version_json, error)) {

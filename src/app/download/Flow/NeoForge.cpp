@@ -8,8 +8,11 @@ namespace flow {
 
 bool NeoForge::RunImpl(const Context& context, const Request& request, const Progress& progress,
                        Outcome& outcome, std::string& error) {
-    std::string version;
-    if (!context.sources.NeoForges().Latest(request.mc_version, version, error)) return false;
+    std::string version = request.loader_version;
+    if (version.empty() &&
+        !context.sources.NeoForges().Latest(request.mc_version, version, error)) {
+        return false;
+    }
 
     Support::Report(progress, "NeoForge " + version, 2);
     if (!Profile::Install(context, request, "NeoForge", version,

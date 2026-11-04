@@ -1,5 +1,6 @@
 #include "app/download/VersionSource/Forge/Forge.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "app/tools/Json.h"
@@ -159,8 +160,22 @@ bool Forge::Latest(const std::string& mc_version, std::string& version,
     return false;
 }
 
-std::string Forge::InstallerUrl(const std::string& root, const std::string& version) {
-    return root + "/net/minecraftforge/forge/" + version + "/forge-" + version + "-installer.jar";
+bool Forge::List(const std::string& mc_version, std::vector<std::string>& out,
+                 std::string& error) const {
+    out.clear();
+    std::string xml;
+    if (!Versions(sources_.ForgeRoot(), xml, error)) return false;
+
+    const std::string prefix = mc_version + "-";
+    for (const auto& candidate : XmlVersions(xml)) {
+        if (candidate.compare(0, prefix.size(), prefix) == 0) out.push_back(candidate);
+    }
+    std::sort(out.begin(), out.end(),
+              [](const std::string& a, const std::string& b) { return Newer(a, b); });
+    return true;
+}
+
+std::string Forge::InstallerUrl(const std::string& root, const std::string& version) {    return root + "/net/minecraftforge/forge/" + version + "/forge-" + version + "-installer.jar";
 }
 
 }  // namespace versionsource

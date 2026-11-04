@@ -2,13 +2,12 @@
 // 模块级类放全局命名空间；组件（Catalog/Runner/Installer/Instance）在 server 命名空间。
 #pragma once
 
-#include <map>
 #include <string>
 #include <vector>
 
 #include "app/launch/Environment/Environment.h"
 #include "app/server/Catalog/Catalog.h"
-#include "app/server/Runner/Runner.h"
+#include "app/server/Runtime/Control.h"
 
 class Server {
 public:
@@ -61,6 +60,5 @@ private:
     std::string game_dir_;
     launch::Environment environment_;
     server::Catalog catalog_;
-    std::map<std::string, server::Runner> runners_;
-    std::map<std::string, int> exit_codes_;
+    server::runtime::Control runtime_;
 };

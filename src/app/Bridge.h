@@ -9,8 +9,13 @@
 #include <QTimer>
 #include <QVariantList>
 
-#include "include/AccountProvider.h"
+#include "app/bridge/Background.h"
+#include "app/bridge/Downloads.h"
+#include "app/bridge/Mods.h"
+#include "app/bridge/SourceRecords.h"
+#include "app/bridge/Versions.h"
 #include "app/launch/Launch.h"
+#include "include/AccountProvider.h"
 
 class Bridge : public QObject {
     Q_OBJECT
@@ -39,6 +44,9 @@ class Bridge : public QObject {
     Q_PROPERTY(QStringList aprilVersions READ AprilVersions NOTIFY downloadChanged)
     Q_PROPERTY(double downloadProgress READ DownloadProgress NOTIFY downloadChanged)
     Q_PROPERTY(bool downloadFailed READ DownloadFailed NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList loaderVersionOptions READ LoaderVersionOptions NOTIFY downloadChanged)
+    Q_PROPERTY(bool loaderVersionsBusy READ LoaderVersionsBusy NOTIFY downloadChanged)
+    Q_PROPERTY(QString loaderVersionsError READ LoaderVersionsError NOTIFY downloadChanged)
     Q_PROPERTY(bool launchRepairing READ LaunchRepairing NOTIFY changed)
     Q_PROPERTY(bool launchCancelling READ LaunchCancelling NOTIFY changed)
     Q_PROPERTY(double launchProgress READ LaunchProgress NOTIFY changed)
@@ -53,37 +61,40 @@ class Bridge : public QObject {
 public:
     Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent = nullptr);
 
-    QStringList Versions() const { return versions_; }
-    QString Selected() const { return selected_; }
-    QString SelectedName() const;
-    QString Details() const { return details_; }
-    QString JavaInfo() const { return java_info_; }
+    QStringList Versions() const { return versions_.Names(); }
+    QString Selected() const { return versions_.Selected(); }
+    QString SelectedName() const { return versions_.SelectedName(); }
+    QString Details() const { return versions_.Details(); }
+    QString JavaInfo() const { return versions_.JavaInfo(); }
     QString Status() const { return status_; }
     bool Busy() const { return busy_; }
     QString GameDir() const;
     QString AccountName() const { return account_name_; }
-    QStringList Javas() const { return javas_; }
-    QString Loader() const { return loader_; }
+    QStringList Javas() const { return versions_.Javas(); }
+    QString Loader() const { return versions_.Loader(); }
     QString BackgroundUrl() const;
     bool HasCustomBackground() const;
     QVariantList SourceRecords() const;
     QVariantList SourceKindOptions() const;
-    QStringList ContentResults() const { return content_results_; }
-    QString DownloadStatus() const { return download_status_; }
-    bool DownloadBusy() const { return download_busy_; }
-    QStringList ContentSources() const { return content_sources_; }
-    QStringList ReleaseVersions() const { return release_versions_; }
-    QStringList SnapshotVersions() const { return snapshot_versions_; }
-    QStringList AprilVersions() const { return april_versions_; }
-    double DownloadProgress() const { return download_progress_; }
-    bool DownloadFailed() const { return download_failed_; }
+    QStringList ContentResults() const { return downloads_.ContentResults(); }
+    QString DownloadStatus() const { return downloads_.Status(); }
+    bool DownloadBusy() const { return downloads_.Busy(); }
+    QStringList ContentSources() const { return downloads_.ContentSources(); }
+    QStringList ReleaseVersions() const { return downloads_.ReleaseVersions(); }
+    QStringList SnapshotVersions() const { return downloads_.SnapshotVersions(); }
+    QStringList AprilVersions() const { return downloads_.AprilVersions(); }
+    double DownloadProgress() const { return downloads_.Progress(); }
+    bool DownloadFailed() const { return downloads_.Failed(); }
+    QStringList LoaderVersionOptions() const { return downloads_.LoaderVersions(); }
+    bool LoaderVersionsBusy() const { return downloads_.LoaderVersionsBusy(); }
+    QString LoaderVersionsError() const { return downloads_.LoaderVersionsError(); }
     bool LaunchRepairing() const { return repairing_; }
     bool LaunchCancelling() const { return cancelling_; }
     double LaunchProgress() const { return repair_progress_; }
     bool LaunchFailed() const { return repair_failed_; }
-    QStringList JavaOptions() const { return java_options_; }
-    int SelectedIndex() const { return selected_index_; }
-    QString InstallingVersion() const { return installing_version_; }
+    QStringList JavaOptions() const { return versions_.JavaOptions(); }
+    int SelectedIndex() const { return versions_.SelectedIndex(); }
+    QString InstallingVersion() const { return downloads_.InstallingVersion(); }
     int MemoryMb() const { return memory_mb_; }
     QString GcMode() const { return gc_mode_; }
     QString JvmArgs() const { return jvm_args_; }
@@ -103,6 +114,9 @@ public slots:
     Q_INVOKABLE void installContent(int index);
     Q_INVOKABLE void selectContentSource(int index);
     Q_INVOKABLE void installGame(int kind, int index, const QString& loader);
+    Q_INVOKABLE void installGameWithLoader(int kind, int index, const QString& loader,
+                                           const QString& loaderVersion);
+    Q_INVOKABLE void loadLoaderVersions(const QString& mcVersion, const QString& loader);
     Q_INVOKABLE void installServer(int kind, int index, const QString& loader);
 
     // 当前版本的 Mod：仓库 / 已安装
@@ -130,56 +144,24 @@ signals:
 
 private:
     void RefreshStatus();
-    void UpdateDetails();
-    void RefreshJavas();
-    void RefreshVersionList();
     void SaveSources();
-    std::string versionIdAt(int index) const;
-    ContentSource* selectedSource();
-    const Directory::VersionEntry* SelectedEntry() const;
-    std::string SelectedMinecraftVersion() const;
-    std::string SelectedContentLoader() const;
 
     Launch& launch_;
     QString account_name_;
     int memory_mb_ = 4096;
-    QStringList versions_;
-    QStringList version_ids_;
-    int selected_index_ = -1;
-    QString installing_version_;
     QString gc_mode_ = QStringLiteral("自动");
     QString jvm_args_;
-    QString selected_;
-    QString details_;
-    QString java_info_;
-    QStringList javas_;
-    QStringList java_options_;
-    QStringList java_paths_;
-    QString java_path_override_;
-    QString loader_ = QStringLiteral("原版");
     QString status_ = QStringLiteral("空闲");
     bool busy_ = false;
     QTimer status_timer_;
 
-    QStringList content_results_;
-    QStringList content_names_;
-    QStringList content_ids_;
-    QStringList content_sources_;
-    QStringList release_versions_, snapshot_versions_, april_versions_;
-    QStringList release_ids_, snapshot_ids_, april_ids_;
-    int content_source_ = 0;
-    QString content_kind_ = QStringLiteral("mod");
-    QString download_status_ = QStringLiteral("选一个分类开始");
-    bool download_busy_ = false;
-    double download_progress_ = 0.0;
-    bool download_failed_ = false;
+    BridgeVersions versions_;
+    BridgeDownloads downloads_;
+    BridgeMods mods_;
 
     bool repairing_ = false;
     bool cancelling_ = false;
     double repair_progress_ = 0.0;
     bool repair_failed_ = false;
     std::atomic<bool> cancel_requested_{false};
-
-    QVariantList repository_items_;
-    QVariantList installed_items_;
 };
