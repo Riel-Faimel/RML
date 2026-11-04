@@ -8,7 +8,7 @@ namespace installer {
 
 class Placement {
 public:
-    enum class Kind { Mod, Shaderpack, Resourcepack, Datapack, World };
+    enum class Kind { Mod, Shaderpack, Resourcepack };
 
     // 实例目录下对应的子目录（不存在也没关系）
     static std::string Directory(const std::string& instance_dir, Kind kind);

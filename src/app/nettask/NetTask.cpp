@@ -1,25 +1,64 @@
 #include "app/network/Network.h"
 #include "app/nettask/NetTask.h"
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <system_error>
 #include <thread>
+#include <unordered_set>
 
 #include "app/tools/tools.h"
 
-NetTask::NetTask() : worker_([this] { Run(); }) {}
+namespace {
+
+// 落盘偶尔会被杀软/索引器短暂占用；rename 失败后等一下再试，别直接报失败。
+bool CommitDownload(const std::string& part, const std::string& dest, std::string& error) {
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        std::error_code ec;
+        std::filesystem::rename(tools::ToPath(part), tools::ToPath(dest), ec);
+        if (!ec) return true;
+        error = ec.message();
+
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(dest), ignored);
+        if (attempt < 9) tools::SleepMs(300);
+    }
+
+    // rename 被占用时退化成复制，至少把下载结果落到目标。
+    std::error_code copy_error;
+    std::filesystem::copy_file(tools::ToPath(part), tools::ToPath(dest),
+                               std::filesystem::copy_options::overwrite_existing, copy_error);
+    if (!copy_error) {
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(part), ignored);
+        return true;
+    }
+    error = copy_error.message();
+    return false;
+}
+
+}  // namespace
+
+NetTask::NetTask() {
+    // 任务之间并行；单任务内部再由 Execute 开一组下载线程。
+    constexpr int kTaskWorkers = 4;
+    for (int i = 0; i < kTaskWorkers; ++i) {
+        workers_.emplace_back([this] { Worker(); });
+    }
+}
 
 NetTask::~NetTask() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
-        for (auto& task : tasks_) {
-            if (task.status == "queued" || task.status == "paused") task.cancelled = true;
-        }
+        for (auto& task : tasks_) task.cancelled = true;
     }
     cv_.notify_all();
-    if (worker_.joinable()) worker_.join();
+    for (auto& worker : workers_) {
+        if (worker.joinable()) worker.join();
+    }
 }
 
 NetTask::Id NetTask::Submit(std::string title, std::vector<Resource> resources, Done done) {
@@ -29,7 +68,15 @@ NetTask::Id NetTask::Submit(std::string title, std::vector<Resource> resources, 
     task.title = std::move(title);
     task.status = "queued";
     task.stage = "等待下载";
-    task.resources = std::move(resources);
+
+    // 同一个目标只保留一份，避免并行下载时两个线程抢同一个 .part。
+    std::unordered_set<std::string> seen;
+    std::vector<Resource> unique;
+    for (auto& resource : resources) {
+        if (!resource.dest.empty() && !seen.insert(resource.dest).second) continue;
+        unique.push_back(std::move(resource));
+    }
+    task.resources = std::move(unique);
     task.done = std::move(done);
     tasks_.push_back(std::move(task));
     queue_.push(tasks_.back().id);
@@ -38,7 +85,7 @@ NetTask::Id NetTask::Submit(std::string title, std::vector<Resource> resources, 
 }
 
 bool NetTask::Run(const std::string& title, std::vector<Resource> resources,
-                      std::string& error) {
+                  std::string& error) {
     const Id id = Submit(title, std::move(resources), {});
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [&] {
@@ -93,6 +140,22 @@ void NetTask::Cancel(Id id) {
     cv_.notify_all();
 }
 
+void NetTask::Retry(Id id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& task : tasks_) {
+        if (task.id != id) continue;
+        if (task.status != "failed" && task.status != "cancelled") return;
+        task.status = "queued";
+        task.stage = "等待重试";
+        task.error.clear();
+        task.paused = false;
+        task.cancelled = false;
+        queue_.push(id);
+        cv_.notify_one();
+        return;
+    }
+}
+
 std::vector<NetTask::Snapshot> NetTask::Snapshots() const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<Snapshot> out;
@@ -105,8 +168,6 @@ std::vector<NetTask::Snapshot> NetTask::Snapshots() const {
         snapshot.status = task.status;
         snapshot.error = task.error;
         snapshot.progress = task.progress;
-        snapshot.bytes = task.bytes;
-        snapshot.total = task.total;
         out.push_back(std::move(snapshot));
     }
     return out;
@@ -117,7 +178,7 @@ void NetTask::WaitIfPaused(Task& task) {
     cv_.wait(lock, [&] { return !task.paused || task.cancelled || stopping_; });
 }
 
-void NetTask::Run() {
+void NetTask::Worker() {
     while (true) {
         Id id = 0;
         {
@@ -160,65 +221,100 @@ void NetTask::Run() {
             continue;
         }
 
-        std::string error;
-        bool ok = true;
-        const int64_t total = static_cast<int64_t>(task->resources.size());
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            task->total = total;
-        }
-        for (size_t i = 0; i < task->resources.size(); ++i) {
-            WaitIfPaused(*task);
-            if (task->cancelled) {
-                ok = false;
-                error = "已取消";
-                break;
-            }
+        Execute(*task);
+    }
+}
 
+void NetTask::Execute(Task& task) {
+    const size_t total = task.resources.size();
+    std::atomic<size_t> next{0};
+    std::atomic<size_t> finished{0};
+    std::atomic<size_t> failed{0};
+    std::atomic<bool> aborted{false};
+    std::mutex error_mutex;
+    std::string first_error;
+
+    auto download_worker = [&] {
+        while (!aborted.load(std::memory_order_relaxed)) {
+            const size_t index = next.fetch_add(1, std::memory_order_relaxed);
+            if (index >= total) return;
+
+            WaitIfPaused(task);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                task->stage = "下载 " + task->resources[i].label;
-            }
-            if (!DownloadOne(*task, task->resources[i], error)) {
-                ok = false;
-                break;
-            }
-
-            // 单文件下载结束后也检查一次暂停/取消；否则一个文件的 Mod 任务
-            // 会在用户刚点暂停后马上被标成完成。
-            WaitIfPaused(*task);
-            if (task->cancelled) {
-                ok = false;
-                error = "已取消";
-                break;
+                if (task.cancelled || stopping_) {
+                    aborted.store(true, std::memory_order_relaxed);
+                    return;
+                }
+                task.stage = "下载 " + task.resources[index].label;
             }
 
+            std::string error;
+            if (!DownloadOne(task, task.resources[index], error)) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (task.cancelled || stopping_) {
+                        aborted.store(true, std::memory_order_relaxed);
+                        return;
+                    }
+                }
+                // 单个文件失败不打断其余文件；全部跑完后再统一报失败。
+                std::lock_guard<std::mutex> lock(error_mutex);
+                if (first_error.empty()) first_error = error;
+                ++failed;
+                continue;
+            }
+
+            // 单文件结束后再检查一次暂停/取消，别让最后一个文件绕过暂停。
+            WaitIfPaused(task);
             std::lock_guard<std::mutex> lock(mutex_);
-            task->progress = total > 0 ? static_cast<double>(i + 1) / total : 1.0;
-            task->bytes = static_cast<int64_t>(i + 1);
-        }
-
-        Done done;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (task->cancelled) {
-                task->status = "cancelled";
-                task->stage = "已取消";
-                if (task->progress < 1.0) task->error = "已取消";
-            } else if (ok) {
-                task->status = "completed";
-                task->stage = "下载完成";
-                task->progress = 1.0;
-            } else {
-                task->status = "failed";
-                task->stage = "下载失败";
-                task->error = error;
+            if (task.cancelled || stopping_) {
+                aborted.store(true, std::memory_order_relaxed);
+                return;
             }
-            done = task->done;
+            ++finished;
+            task.progress = total > 0 ? static_cast<double>(finished.load()) / total : 1.0;
         }
-        cv_.notify_all();
-        if (done) done(ok, error);
+    };
+
+    if (total > 0) {
+        const size_t count = std::min<size_t>(4, total);
+        if (count <= 1) {
+            download_worker();
+        } else {
+            std::vector<std::thread> pool;
+            pool.reserve(count);
+            for (size_t i = 0; i < count; ++i) pool.emplace_back(download_worker);
+            for (auto& thread : pool) thread.join();
+        }
     }
+
+    const bool ok = !aborted.load() && failed.load() == 0 && finished.load() == total;
+    Done done;
+    std::string final_error;
+    bool completed = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (task.cancelled || stopping_) {
+            task.status = "cancelled";
+            task.stage = "已取消";
+            if (task.progress < 1.0) task.error = "已取消";
+            final_error = "已取消";
+        } else if (ok) {
+            task.status = "completed";
+            task.stage = "下载完成";
+            task.progress = 1.0;
+            completed = true;
+        } else {
+            task.status = "failed";
+            task.stage = "下载失败";
+            task.error = first_error.empty() ? "下载失败" : first_error;
+            final_error = task.error;
+        }
+        done = task.done;
+    }
+    cv_.notify_all();
+    if (done) done(completed, final_error);
 }
 
 bool NetTask::DownloadOne(Task& task, const Resource& resource, std::string& error) {
@@ -250,14 +346,14 @@ bool NetTask::DownloadOne(Task& task, const Resource& resource, std::string& err
         }
     }
 
-    const std::string part = resource.dest + ".part";
+    const std::string part = resource.dest + ".part." + std::to_string(task.id);
     bool downloaded = false;
     for (int attempt = 0; attempt < 3; ++attempt) {
         if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(300));
         error.clear();
         downloaded = Network::download(resource.url, part, error, [this, &task] {
             std::lock_guard<std::mutex> lock(mutex_);
-            return task.cancelled;
+            return task.cancelled || stopping_;
         });
         if (downloaded) break;
         if (error == "cancelled") break;
@@ -280,15 +376,9 @@ bool NetTask::DownloadOne(Task& task, const Resource& resource, std::string& err
         }
     }
 
-    std::error_code ec;
-    std::filesystem::rename(tools::ToPath(part), tools::ToPath(resource.dest), ec);
-    if (ec) {
-        std::filesystem::remove(tools::ToPath(resource.dest), ec);
-        ec.clear();
-        std::filesystem::rename(tools::ToPath(part), tools::ToPath(resource.dest), ec);
-    }
-    if (ec) {
-        error = resource.label + ": 落盘失败";
+    std::string rename_error;
+    if (!CommitDownload(part, resource.dest, rename_error)) {
+        error = resource.label + ": 落盘失败（" + rename_error + "）";
         std::error_code ignored;
         std::filesystem::remove(tools::ToPath(part), ignored);
         return false;

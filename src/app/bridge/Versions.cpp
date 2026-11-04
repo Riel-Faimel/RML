@@ -1,8 +1,12 @@
 #include "app/bridge/Versions.h"
 
+#include <QMetaObject>
+#include <QMetaType>
 #include <QString>
 
 #include <filesystem>
+#include <thread>
+#include <utility>
 
 #include "app/bridge/Labels.h"
 #include "app/tools/tools.h"
@@ -21,7 +25,8 @@ QString FromStd(const std::string& text) { return QString::fromStdString(text); 
 
 }  // namespace
 
-BridgeVersions::BridgeVersions(Launch& launch) : launch_(launch) {
+BridgeVersions::BridgeVersions(Launch& launch, QObject* context)
+    : launch_(launch), context_(context) {
     Refresh();
 
     if (!names_.isEmpty()) {
@@ -134,14 +139,6 @@ bool BridgeVersions::SelectAt(int index) {
     return true;
 }
 
-bool BridgeVersions::Select(const QString& id) {
-    if (!launch_.Versions().Select(id.toStdString())) return false;
-    selected_ = id;
-    selected_index_ = ids_.indexOf(id);
-    UpdateDetails();
-    return true;
-}
-
 void BridgeVersions::SelectInstalled(const std::string& id) {
     Refresh();
     if (!launch_.Versions().Select(id)) return;
@@ -162,14 +159,22 @@ void BridgeVersions::OpenFolderAt(int index) {
 #endif
 }
 
-void BridgeVersions::DeleteAt(int index) {
+bool BridgeVersions::DeleteAt(int index, std::string& error) {
     const std::string id = VersionIdAt(index);
-    if (id.empty()) return;
+    if (id.empty()) {
+        error = "版本不存在";
+        return false;
+    }
 
     const std::string dir = launch_.Versions().VersionDir(id);
     std::error_code ec;
     std::filesystem::remove_all(tools::ToPath(dir), ec);
+    if (ec) {
+        error = "删除版本目录失败: " + dir + "（" + ec.message() + "）";
+        return false;
+    }
 
+    // 只删入口；核心保留，由设置页的 GC 显式清理。
     launch_.Versions().Refresh();
     Refresh();
     if (names_.isEmpty()) {
@@ -179,6 +184,7 @@ void BridgeVersions::DeleteAt(int index) {
     } else {
         SelectAt(qMin(index, static_cast<int>(names_.size()) - 1));
     }
+    return true;
 }
 
 void BridgeVersions::RenameAt(int index, const QString& name) {
@@ -195,6 +201,39 @@ void BridgeVersions::SelectJava(int index) {
         java_path_override_ = java_paths_.at(index - 1);
     }
     UpdateDetails();
+}
+
+bool BridgeVersions::CanUninstallJava(int index) const {
+    if (index < 0 || index >= java_paths_.size()) return false;
+    const auto& javas = launch_.Tools().Javas();
+    if (index >= static_cast<int>(javas.size())) return false;
+    return javas[index].source == "RML";
+}
+
+bool BridgeVersions::UninstallJava(int index, std::string& error) {
+    if (!CanUninstallJava(index)) {
+        error = "只能卸载 RML 安装的 Java";
+        return false;
+    }
+    const std::string path = launch_.Tools().Javas()[index].path;
+    if (!launch_.Tools().Uninstall(path, error)) return false;
+
+    if (java_path_override_ == FromStd(path)) java_path_override_.clear();
+    RefreshJavas();
+    UpdateDetails();
+    return true;
+}
+
+void BridgeVersions::InstallJava(int major, std::function<void(bool, const QString&)> done) {
+    std::thread([this, major, done = std::move(done)] {
+        std::string error;
+        const bool ok = launch_.Tools().Install(major, error);
+        const QString message = QString::fromStdString(error);
+        QMetaObject::invokeMethod(
+            context_,
+            [done = std::move(done), ok, message] { done(ok, message); },
+            Qt::QueuedConnection);
+    }).detach();
 }
 
 std::string BridgeVersions::VersionIdAt(int index) const {

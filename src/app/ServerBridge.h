@@ -46,15 +46,16 @@ public slots:
     void reloadInstallations();
     void selectAt(int index);
     void createServer(const QString& name, int installationIndex, int port, int memoryMb,
-                      const QString& gamemode, const QString& difficulty, int maxPlayers);
+                      const QString& gamemode, const QString& difficulty, int maxPlayers,
+                      const QString& seed);
     void startServer();
     void stopServer();
     void forceStopServer();
     void sendCommand(const QString& command);
     void openFolder();
     void renameServer(const QString& name);
-    void removeServer();
     void removeServerAt(int index);
+    void removeInstallationAt(int index);
     void applyParams(int port, int memoryMb, const QString& gamemode, const QString& difficulty,
                      int maxPlayers);
 

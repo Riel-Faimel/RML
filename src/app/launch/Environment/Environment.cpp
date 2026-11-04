@@ -55,14 +55,6 @@ std::string Narrow(const std::wstring& text) {
     return out;
 }
 
-std::wstring Widen(const std::string& text) {
-    if (text.empty()) return {};
-    int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    std::wstring out(static_cast<size_t>(size), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), size);
-    return out;
-}
-
 void CollectJavaHomes(HKEY root, const wchar_t* subkey, std::vector<std::string>& homes) {
     HKEY key = nullptr;
     if (RegOpenKeyExW(root, subkey, 0, KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS) return;
@@ -319,6 +311,34 @@ bool Environment::Install(int major, std::string& error) {
 
     Refresh();
     return tools::PathExists(tools::JoinPath(target, "bin/java.exe"));
+}
+
+bool Environment::Uninstall(const std::string& java_path, std::string& error) {
+    namespace fs = std::filesystem;
+    const fs::path java = tools::ToPath(java_path);
+    std::error_code ec;
+    if (!fs::is_regular_file(java, ec) || java.filename() != "java.exe") {
+        error = "找不到要卸载的 Java: " + java_path;
+        return false;
+    }
+
+    const fs::path bin = java.parent_path();
+    const fs::path install_dir = bin.parent_path();
+    const fs::path root = tools::ToPath(ManagedRoot());
+    std::error_code same_error;
+    if (bin.filename() != "bin" || install_dir.parent_path().empty() ||
+        !fs::equivalent(install_dir.parent_path(), root, same_error) || same_error) {
+        error = "只能卸载 RML 自己安装的 Java";
+        return false;
+    }
+
+    fs::remove_all(install_dir, ec);
+    if (ec) {
+        error = "卸载 Java 失败: " + ec.message();
+        return false;
+    }
+    Refresh();
+    return true;
 }
 
 }  // namespace launch

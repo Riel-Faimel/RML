@@ -9,15 +9,18 @@ GlassPanel {
     id: root
 
     signal addRequested()
+    signal openFolderRequested(int index)
+    signal renameRequested(int index, string name)
     signal deleteRequested(int index, string name)
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 20
         spacing: 10
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 44
             spacing: 8
 
             Text {
@@ -34,7 +37,6 @@ GlassPanel {
                 implicitHeight: 32
                 padding: 0
                 onClicked: root.addRequested()
-
                 contentItem: Text {
                     text: "+"
                     font.pixelSize: 20
@@ -53,7 +55,7 @@ GlassPanel {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: Theme.border
+            color: Theme.divider
         }
 
         ListView {
@@ -131,6 +133,14 @@ GlassPanel {
                     id: rowMenu
                     y: rowMoreButton.height
 
+                    SoftMenuItem {
+                        text: qsTr("打开项目文件夹")
+                        onTriggered: root.openFolderRequested(index)
+                    }
+                    SoftMenuItem {
+                        text: qsTr("重命名")
+                        onTriggered: root.renameRequested(index, modelData.name)
+                    }
                     SoftMenuItem {
                         text: qsTr("删除服务器")
                         onTriggered: root.deleteRequested(index, modelData.name)

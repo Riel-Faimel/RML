@@ -24,6 +24,11 @@ public:
     bool Remove(const std::string& game_dir, const Directory::VersionEntry& entry, int index,
                 QString& message);
 
+    // 把本机 jar 导入全局 Mod 仓库，并写版本描述 sidecar。
+    bool Import(const std::string& game_dir, const std::string& source,
+                const std::string& game_version, const std::string& loader,
+                const std::string& mod_version, QString& message);
+
 private:
     QVariantList repository_items_;
     QVariantList installed_items_;

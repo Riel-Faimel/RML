@@ -2,6 +2,7 @@
 
 #include "app/directory/Directory.h"
 #include "app/directory/Flow/Support.h"
+#include "app/directory/Flow/Transaction.h"
 #include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
@@ -12,8 +13,15 @@ namespace flow {
 bool Fabric::RunImpl(const Context& context, const Request& request, const Progress& progress,
                      Outcome& outcome, std::string& error) {
     const std::string& mc_version = request.mc_version;
+    const Directory paths(request.game_dir);
+    const bool base_preexisting =
+        tools::PathExists(paths.VersionJson(mc_version)) ||
+        tools::PathExists(paths.CoreJson(paths.CoreForEntry(mc_version)));
 
     Support::Report(progress, "准备原版 " + mc_version, 4);
+    if (!base_preexisting) {
+        if (!Support::WriteBaseMarker(request.game_dir, mc_version, error)) return false;
+    }
     if (!Support::EnsureVanillaJson(context, mc_version, error)) return false;
 
     Support::Report(progress, "获取 Fabric 加载器", 12);
@@ -38,8 +46,10 @@ bool Fabric::RunImpl(const Context& context, const Request& request, const Progr
     if (version_id.empty()) version_id = "fabric-loader-" + loader_version + "-" + mc_version;
 
     Support::Report(progress, "写入版本描述", 18);
-    if (!installer::Version::WriteMarker(request.game_dir, version_id, "Fabric", false)) {
-        error = "写托管标记失败: " + version_id;
+    Transaction txn(request.game_dir, version_id, "loader", "Fabric", loader_version,
+                    mc_version, mc_version, false);
+    if (!txn.Ok()) {
+        error = txn.Error();
         return false;
     }
     if (!installer::Version::WriteVersionJson(request.game_dir, version_id, version_json, error)) {
@@ -60,9 +70,9 @@ bool Fabric::RunImpl(const Context& context, const Request& request, const Progr
         return false;
     }
 
-    installer::Version::WriteMarker(request.game_dir, version_id, "Fabric", true);
-    if (!tools::PathExists(Directory(request.game_dir).VersionDir(mc_version) + "/rml.json")) {
-        installer::Version::WriteMarker(request.game_dir, mc_version, "原版", true, false, true);
+    if (!txn.Commit()) {
+        error = txn.Error();
+        return false;
     }
 
     outcome.version_id = version_id;

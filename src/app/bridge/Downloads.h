@@ -7,6 +7,8 @@
 
 #include <functional>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "app/bridge/Content.h"
 #include "app/bridge/DownloadState.h"
@@ -20,6 +22,7 @@ public:
 
     BridgeDownloads(Launch& launch, NetTask& tasks, QObject* context, Notify download_changed,
                     Notify changed, InstalledHandler installed);
+    ~BridgeDownloads();
 
     const QStringList& ContentResults() const { return content_.Results(); }
     QString Status() const { return state_.status; }
@@ -46,8 +49,8 @@ public:
         content_.Search(query, kind, mc_version, loader);
     }
     void InstallContent(int index, const std::string& mc_version, const std::string& loader,
-                        const std::string& instance_dir) {
-        content_.Install(index, mc_version, loader, instance_dir);
+                        const std::string& repo_dir, const std::string& instance_dir) {
+        content_.Install(index, mc_version, loader, repo_dir, instance_dir);
     }
     void SelectSource(int index) { content_.SelectSource(index); }
 
@@ -76,4 +79,5 @@ private:
     QStringList loader_versions_;
     bool loader_versions_busy_ = false;
     QString loader_versions_error_;
+    std::vector<std::thread> workers_;
 };

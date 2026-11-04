@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "app/directory/Directory.h"
+#include "app/json/JsonArena.h"
 #include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
@@ -177,13 +178,16 @@ bool Support::DownloadFile(const std::string& url, const std::string& dest, cons
 
 bool Support::EnsureVanillaJson(const Context& context, const std::string& mc_version,
                                 std::string& error) {
-    const std::string path = Directory(context.versions.GameDir()).VersionJson(mc_version);
+    const Directory paths(context.versions.GameDir());
+    const std::string path = paths.VersionJson(mc_version);
+    const std::string core_path = paths.CoreJson(paths.CoreForEntry(mc_version));
 
-    if (tools::PathExists(path)) {
+    for (const std::string& candidate : {path, core_path}) {
+        if (!tools::PathExists(candidate)) continue;
         Json::Value root;
         Json json;
         std::string parse_error;
-        if (json.Parse(Directory::ReadTextFile(path), root, parse_error) &&
+        if (json.Parse(Directory::ReadTextFile(candidate), root, parse_error) &&
             !root["id"].AsString().empty()) {
             return true;
         }
@@ -216,7 +220,10 @@ bool Support::EnsureClientJar(const Context& context, const std::string& mc_vers
                               const Progress& progress, std::string& error) {
     const Directory paths(context.versions.GameDir());
     const std::string jar_path = paths.VersionJar(mc_version);
-    if (tools::PathExists(jar_path)) return true;
+    if (tools::PathExists(jar_path) ||
+        tools::PathExists(paths.CoreJar(paths.CoreForEntry(mc_version)))) {
+        return true;
+    }
 
     const std::string json_path = paths.VersionJson(mc_version);
     Json::Value root;
@@ -288,6 +295,32 @@ bool Support::ReadMainClass(const std::string& jar, const std::string& work_dir,
 
     error = "处理器 jar 的 MANIFEST 里没有 Main-Class: " + jar;
     return false;
+}
+
+bool Support::WriteBaseMarker(const std::string& game_dir, const std::string& mc_version,
+                              std::string& error) {
+    const Directory paths(game_dir);
+    const std::string dir = paths.VersionDir(mc_version);
+    if (tools::PathExists(dir + "/rml.json")) return true;  // 用户已有原版，保持原状
+
+    auto j = JsonArena::Instance().Open(dir + "/rml.json");
+    if (!j) {
+        error = j.error();
+        return false;
+    }
+    j["schema"] = Json::Value::Int(2);
+    j["id"] = Json::Value::String(mc_version);
+    j["name"] = Json::Value::String(mc_version);
+    j["role"] = Json::Value::String("base");
+    j["loader"] = Json::Value::String("原版");
+    j["loaderVersion"] = Json::Value::String("");
+    j["minecraft"] = Json::Value::String(mc_version);
+    j["base"] = Json::Value::String("");
+    j["complete"] = Json::Value::Bool(true);
+    j["userInstalled"] = Json::Value::Bool(false);
+    j["state"] = Json::Value::String("committed");
+    j["fresh"] = Json::Value::Bool(false);
+    return j.commit(error);
 }
 
 }  // namespace flow

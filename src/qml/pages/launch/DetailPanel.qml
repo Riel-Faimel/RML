@@ -30,11 +30,12 @@ GlassPanel {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 40
             spacing: 10
 
             Text {
                 text: bridge.selectedName
-                font.pixelSize: 24
+                font.pixelSize: 20
                 font.bold: true
                 color: Theme.text
                 elide: Text.ElideRight
@@ -55,6 +56,12 @@ GlassPanel {
                     color: Theme.primaryText
                 }
             }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
         }
 
         Text {

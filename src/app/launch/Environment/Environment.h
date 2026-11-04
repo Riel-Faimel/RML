@@ -35,6 +35,9 @@ public:
     // 下载并解压到 ManagedRoot，不触碰系统
     bool Install(int major, std::string& error);
 
+    // 只允许卸载 ManagedRoot 下一级的 Java；系统 Java 一律拒绝
+    bool Uninstall(const std::string& java_path, std::string& error);
+
     // Java 的网络下载交给任务模块；安装/解压仍由这里负责。
     void SetNetTask(NetTask* task_manager) { task_manager_ = task_manager; }
 

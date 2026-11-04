@@ -58,17 +58,6 @@ void BridgeContent::Search(const QString& query, const QString& kind, const std:
                      const std::string& loader) {
     if (state_.busy) return;
 
-    if (mc_version.empty()) {
-        state_.status = QStringLiteral("先选择一个游戏版本，再搜索内容");
-        download_changed_();
-        return;
-    }
-    if (kind == QStringLiteral("mod") && loader.empty()) {
-        state_.status = QStringLiteral("当前版本没有 Mod 加载器，不能安装 Mod");
-        download_changed_();
-        return;
-    }
-
     kind_ = kind;
     state_.busy = true;
     state_.failed = false;
@@ -76,10 +65,11 @@ void BridgeContent::Search(const QString& query, const QString& kind, const std:
     download_changed_();
 
     const std::string text = query.toStdString();
-    std::thread([this, text, loader, mc_version] {
+    const std::string search_kind = kind.toStdString();
+    std::thread([this, text, search_kind, loader, mc_version] {
         std::vector<ContentSource::Project> projects;
         std::string error;
-        bool ok = SelectedSource()->Search(text, loader, mc_version, projects, error);
+        bool ok = SelectedSource()->Search(text, search_kind, loader, mc_version, projects, error);
 
         QStringList titles;
         QStringList names;
@@ -108,7 +98,7 @@ void BridgeContent::Search(const QString& query, const QString& kind, const std:
 }
 
 void BridgeContent::Install(int index, const std::string& mc_version, const std::string& loader,
-                      const std::string& instance_dir) {
+                            const std::string& repo_dir, const std::string& instance_dir) {
     if (state_.busy || index < 0 || index >= ids_.size()) return;
 
     const std::string project_id = ids_.at(index).toStdString();
@@ -132,7 +122,7 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
     state_.status = QStringLiteral("正在查找适配 %1 的版本…").arg(FromStd(mc_version));
     download_changed_();
 
-    std::thread([this, project_id, project_name, kind, instance_dir, loader, mc_version] {
+    std::thread([this, project_id, project_name, kind, repo_dir, instance_dir, loader, mc_version] {
         std::vector<ContentSource::Version> versions;
         std::string error;
 
@@ -190,7 +180,9 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         NetTask::Resource resource;
         resource.url = file.url;
         resource.sha1 = file.sha1;
-        resource.dest = directory::installer::Placement::Resolve(instance_dir, placement_kind,
+        // mods 只进全局仓库；光影/材质包进当前版本目录
+        const std::string content_dir = kind == "mod" ? repo_dir : instance_dir;
+        resource.dest = directory::installer::Placement::Resolve(content_dir, placement_kind,
                                                                 file.filename, true);
         resource.label = file.filename;
         resource.size = file.size;
@@ -202,7 +194,7 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         tasks_.Submit("下载 " + (project_name.empty() ? file.filename : project_name),
                       {resource},
                       [this, kind, project_id, project_name, version_name, game_versions, loaders,
-                       instance_dir, dest = resource.dest, filename = file.filename,
+                       repo_dir, dest = resource.dest, filename = file.filename,
                        sha1 = file.sha1](bool ok, const std::string& download_error) {
                           std::string error = download_error;
                           if (ok && kind == "mod") {
@@ -224,8 +216,8 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
                               }
                               meta.Set("gameVersions", game_versions_json);
                               meta.Set("loaders", loaders_json);
-                              if (!Directory(instance_dir).WriteRepositoryModText(
-                                      filename, meta.Dump())) {
+                              if (!Directory(repo_dir).WriteRepositoryModText(filename,
+                                                                              meta.Dump())) {
                                   ok = false;
                                   error = "写入 Mod 仓库描述失败: " + dest;
                               }

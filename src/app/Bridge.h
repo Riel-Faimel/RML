@@ -2,6 +2,9 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
+#include <string>
+#include <vector>
 
 #include <QObject>
 #include <QString>
@@ -13,23 +16,19 @@
 #include "app/bridge/Downloads.h"
 #include "app/bridge/Mods.h"
 #include "app/bridge/SourceRecords.h"
+#include "app/bridge/Tasks.h"
 #include "app/bridge/Versions.h"
 #include "app/launch/Launch.h"
-#include "app/nettask/NetTask.h"
-#include "include/AccountProvider.h"
 
 class Bridge : public QObject {
     Q_OBJECT
 
     Q_PROPERTY(QStringList versions READ Versions NOTIFY changed)
-    Q_PROPERTY(QString selected READ Selected NOTIFY changed)
     Q_PROPERTY(QString selectedName READ SelectedName NOTIFY changed)
     Q_PROPERTY(QString details READ Details NOTIFY changed)
     Q_PROPERTY(QString javaInfo READ JavaInfo NOTIFY changed)
     Q_PROPERTY(QString status READ Status NOTIFY changed)
     Q_PROPERTY(bool busy READ Busy NOTIFY changed)
-    Q_PROPERTY(QString gameDir READ GameDir CONSTANT)
-    Q_PROPERTY(QString accountName READ AccountName NOTIFY changed)
     Q_PROPERTY(QStringList javas READ Javas NOTIFY changed)
     Q_PROPERTY(QString loader READ Loader NOTIFY changed)
     Q_PROPERTY(QString backgroundUrl READ BackgroundUrl NOTIFY changed)
@@ -60,9 +59,12 @@ class Bridge : public QObject {
     Q_PROPERTY(int memoryMb READ MemoryMb NOTIFY changed)
     Q_PROPERTY(QString gcMode READ GcMode NOTIFY changed)
     Q_PROPERTY(QString jvmArgs READ JvmArgs NOTIFY changed)
+    Q_PROPERTY(QString coreSummary READ CoreSummary NOTIFY changed)
+    Q_PROPERTY(QString maintenanceReport READ MaintenanceReport NOTIFY changed)
 
 public:
-    Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent = nullptr);
+    Bridge(Launch& launch, QString account_name, int memory_mb,
+           std::function<bool()> server_running = {}, QObject* parent = nullptr);
 
     QStringList Versions() const { return versions_.Names(); }
     QString Selected() const { return versions_.Selected(); }
@@ -71,12 +73,11 @@ public:
     QString JavaInfo() const { return versions_.JavaInfo(); }
     QString Status() const { return status_; }
     bool Busy() const { return busy_; }
-    QString GameDir() const;
-    QString AccountName() const { return account_name_; }
+    QString GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
     QStringList Javas() const { return versions_.Javas(); }
     QString Loader() const { return versions_.Loader(); }
-    QString BackgroundUrl() const;
-    bool HasCustomBackground() const;
+    QString BackgroundUrl() const { return BridgeBackground::Url(); }
+    bool HasCustomBackground() const { return BridgeBackground::Has(); }
     QVariantList SourceRecords() const;
     QVariantList SourceKindOptions() const;
     QStringList ContentResults() const { return downloads_.ContentResults(); }
@@ -91,8 +92,8 @@ public:
     QStringList LoaderVersionOptions() const { return downloads_.LoaderVersions(); }
     bool LoaderVersionsBusy() const { return downloads_.LoaderVersionsBusy(); }
     QString LoaderVersionsError() const { return downloads_.LoaderVersionsError(); }
-    QVariantList Tasks() const;
-    int ActiveTasks() const;
+    QVariantList Tasks() const { return tasks_.Snapshots(); }
+    int ActiveTasks() const { return tasks_.Active(); }
     bool LaunchRepairing() const { return repairing_; }
     bool LaunchCancelling() const { return cancelling_; }
     double LaunchProgress() const { return repair_progress_; }
@@ -103,29 +104,54 @@ public:
     int MemoryMb() const { return memory_mb_; }
     QString GcMode() const { return gc_mode_; }
     QString JvmArgs() const { return jvm_args_; }
+    QString CoreSummary() const { return core_summary_; }
+    QString MaintenanceReport() const { return maintenance_report_; }
 
 public slots:
-    Q_INVOKABLE void selectVersionAt(int index);
-    Q_INVOKABLE void openVersionFolderAt(int index);
+    Q_INVOKABLE void selectVersionAt(int index) {
+        if (versions_.SelectAt(index)) emit changed();
+    }
+    Q_INVOKABLE void openVersionFolderAt(int index) { versions_.OpenFolderAt(index); }
     Q_INVOKABLE void deleteVersionAt(int index);
     Q_INVOKABLE void renameVersionAt(int index, const QString& name);
-    Q_INVOKABLE void selectVersion(const QString& id);
+
+    // 核心维护：dry-run 检查、正式迁移、回滚、清理孤立核心。
+    Q_INVOKABLE void checkCores();
+    Q_INVOKABLE void migrateCores();
+    Q_INVOKABLE void rollbackCoreMigration();
+    Q_INVOKABLE void cleanOrphanCores();
     Q_INVOKABLE void applyLaunchOptions(int memory_mb, const QString& gc, const QString& jvm_args);
     Q_INVOKABLE void launchGame();
     Q_INVOKABLE void cancelLaunchRepair();
     Q_INVOKABLE void installJava(int major);
-    Q_INVOKABLE void loadGameVersions();
+    Q_INVOKABLE bool canUninstallJava(int index) const;
+    Q_INVOKABLE void uninstallJava(int index);
+    Q_INVOKABLE QString selectedMinecraftVersion() const {
+        return QString::fromStdString(versions_.SelectedMinecraftVersion());
+    }
+    Q_INVOKABLE bool importMod(const QString& source, const QString& gameVersion,
+                               const QString& loader, const QString& modVersion);
+    Q_INVOKABLE void loadGameVersions() { downloads_.LoadGameVersions(); }
     Q_INVOKABLE void searchContent(const QString& query, const QString& kind);
     Q_INVOKABLE void installContent(int index);
-    Q_INVOKABLE void selectContentSource(int index);
-    Q_INVOKABLE void installGame(int kind, int index, const QString& loader);
+    Q_INVOKABLE void selectContentSource(int index) { downloads_.SelectSource(index); }
+    Q_INVOKABLE void installGame(int kind, int index, const QString& loader) {
+        downloads_.InstallGame(kind, index, loader);
+    }
     Q_INVOKABLE void installGameWithLoader(int kind, int index, const QString& loader,
-                                           const QString& loaderVersion);
-    Q_INVOKABLE void loadLoaderVersions(const QString& mcVersion, const QString& loader);
+                                           const QString& loaderVersion) {
+        downloads_.InstallGame(kind, index, loader, loaderVersion);
+    }
+    Q_INVOKABLE void loadLoaderVersions(const QString& mcVersion, const QString& loader) {
+        downloads_.LoadLoaderVersions(mcVersion, loader);
+    }
     Q_INVOKABLE void pauseTask(qulonglong id);
     Q_INVOKABLE void resumeTask(qulonglong id);
     Q_INVOKABLE void cancelTask(qulonglong id);
-    Q_INVOKABLE void installServer(int kind, int index, const QString& loader);
+    Q_INVOKABLE void retryTask(qulonglong id);
+    Q_INVOKABLE void installServer(int kind, int index, const QString& loader) {
+        downloads_.InstallServer(kind, index, loader);
+    }
 
     // 当前版本的 Mod：仓库 / 已安装
     Q_INVOKABLE QVariantList installedMods();
@@ -143,7 +169,10 @@ public slots:
     Q_INVOKABLE void removeSource(int index);
     Q_INVOKABLE void resetSources();
 
-    Q_INVOKABLE void selectJava(int index);
+    Q_INVOKABLE void selectJava(int index) {
+        versions_.SelectJava(index);
+        emit changed();
+    }
 
 signals:
     void changed();
@@ -153,22 +182,28 @@ signals:
 
 private:
     void RefreshStatus();
-    void RefreshTasks();
     void SaveSources();
+    bool ApplyModResult(bool ok, const QString& message);
+    void RefreshCoreSummary();
+    bool MaintenanceBlocked(QString& reason) const;
+    void SetMaintenanceReport(const std::vector<std::string>& lines, const std::string& error,
+                              const QString& done_text);
 
     Launch& launch_;
     QString account_name_;
+    std::function<bool()> server_running_;
     int memory_mb_ = 4096;
     QString gc_mode_ = QStringLiteral("自动");
     QString jvm_args_;
     QString status_ = QStringLiteral("空闲");
+    QString core_summary_;
+    QString maintenance_report_;
     bool busy_ = false;
     bool game_started_ = false;
     QTimer status_timer_;
-    QTimer task_timer_;
 
     BridgeVersions versions_;
-    NetTask tasks_;
+    BridgeTasks tasks_;
     BridgeDownloads downloads_;
     BridgeMods mods_;
 

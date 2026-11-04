@@ -23,8 +23,17 @@ public:
                  std::string& error) const;
     bool Fabric(const std::string& mc_version, const Progress& progress, std::string& version_id,
                 std::string& error) const;
+    bool Forge(const std::string& mc_version, const Progress& progress, std::string& version_id,
+               std::string& error) const;
 
 private:
+    static bool WriteServerMarker(const launch::Version& versions, const std::string& id,
+                                  const std::string& name, const std::string& loader,
+                                  const std::string& mc_version, int java_major,
+                                  const std::string& main_class,
+                                  const std::vector<std::string>& classpath,
+                                  const std::string& arg_file, std::string& error);
+
     bool Prepare(const std::string& id, const std::string& name, const std::string& loader,
                  const std::string& mc_version, int java_major, std::string& error) const;
     bool WriteMarker(const std::string& id, const std::string& name, const std::string& loader,

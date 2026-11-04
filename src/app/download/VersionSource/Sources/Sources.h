@@ -32,7 +32,6 @@ public:
     std::string FabricRoot() const { return Url("fabric"); }
 
     static std::string DefaultUrl(const std::string& kind);
-    static std::string DefaultName(const std::string& kind);
     static bool KnownKind(const std::string& kind);
     static std::vector<std::string> Kinds();
 

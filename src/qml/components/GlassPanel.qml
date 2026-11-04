@@ -107,4 +107,15 @@ Item {
     onHeightChanged: crop.scheduleUpdate()
     onXChanged: crop.scheduleUpdate()
     onYChanged: crop.scheduleUpdate()
+    onBackdropChanged: crop.scheduleUpdate()
+
+    // ShaderEffectSource 是 live=false；背景图换源后必须重新抓取，否则面板还是旧图。
+    Connections {
+        target: root.backdrop
+        ignoreUnknownSignals: true
+        function onSourceChanged() { crop.scheduleUpdate() }
+        function onStatusChanged() {
+            if (root.backdrop.status === Image.Ready) crop.scheduleUpdate()
+        }
+    }
 }

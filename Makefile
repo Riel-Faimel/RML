@@ -42,7 +42,14 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/tools/Process.cpp \
                 src/app/tools/Sha1.cpp \
                 src/app/tools/Compat.cpp \
+                src/app/json/JsonArena.cpp \
                 src/app/directory/Directory.cpp \
+                src/app/directory/Cores.cpp \
+                src/app/directory/Cores.Scan.cpp \
+                src/app/directory/Migration.cpp \
+                src/app/directory/Migration/Journal.cpp \
+                src/app/directory/Migration/Plan.cpp \
+                src/app/directory/Versions.cpp \
                 src/app/nettask/NetTask.cpp \
                 src/app/launch/Version/Version.cpp \
                 src/app/launch/Environment/Environment.cpp \
@@ -60,6 +67,7 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/directory/Installer/Placement/Placement.cpp \
                 src/app/directory/Installer/Version/Version.cpp \
                 src/app/directory/Flow/Support.cpp \
+                src/app/directory/Flow/Transaction.cpp \
                 src/app/directory/Flow/Processors.cpp \
                 src/app/directory/Flow/Profile.cpp \
                 src/app/directory/Flow/Vanilla.cpp \
@@ -70,17 +78,21 @@ CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/server/Catalog/Catalog.cpp \
                 src/app/server/Runner/Runner.cpp \
                 src/app/server/Installer/Installer.cpp \
+                src/app/server/Installer/Installer.Forge.cpp \
                 src/app/server/Properties/Properties.cpp \
                 src/app/server/Runtime/Control.cpp \
                 src/app/server/Naming/Name.cpp \
-                src/app/server/Server.cpp
+                src/app/server/Server.cpp \
+                src/app/server/Server.Maintenance.cpp
 
-APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/ServerBridge.cpp \
+APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/Bridge.Maintenance.cpp \
+                src/app/ServerBridge.cpp \
                 src/app/bridge/Labels.cpp \
                 src/app/bridge/Background.cpp \
                 src/app/bridge/SourceRecords.cpp \
                 src/app/bridge/Mods.cpp \
                 src/app/bridge/Versions.cpp \
+                src/app/bridge/Tasks.cpp \
                 src/app/bridge/Downloads.cpp \
                 src/app/bridge/Content.cpp
 
@@ -90,6 +102,7 @@ APP_OBJECTS  := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES)) \
 
 TARGET := $(BUILD)/rml.exe
 CHECK  := $(BUILD)/rml_check.exe
+CORES_CHECK := $(BUILD)/rml_cores_test.exe
 
 all: $(TARGET)
 
@@ -129,6 +142,14 @@ $(CHECK): $(CORE_OBJECTS) $(BUILD)/test/main.o
 check: $(CHECK)
 	"$(CHECK)"
 
+# 核心/入口分离与引用测试：全部在 build/ 临时目录，不碰真实 .minecraft
+$(CORES_CHECK): $(CORE_OBJECTS) $(BUILD)/test/cores_test.o
+	@ echo   LINK $@
+	@ $(CXX) $^ -L$(QT_DIR)/lib -lwinhttp -lshell32 -o $@
+
+cores-test: $(CORES_CHECK)
+	"$(CORES_CHECK)"
+
 run: $(TARGET)
 	"$(TARGET)"
 
@@ -145,7 +166,7 @@ clean:
 	@ if exist "build" rmdir /s /q "build"
 	@ if exist "$(DIST)" rmdir /s /q "$(DIST)"
 
-.PHONY: all run check deploy clean
+.PHONY: all run check cores-test deploy clean
 
 # 头文件依赖：改了 .h 也要重编，否则会因对象布局不一致而崩
--include $(CORE_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) $(BUILD)/test/main.d
+-include $(CORE_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) $(BUILD)/test/main.d $(BUILD)/test/cores_test.d

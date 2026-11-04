@@ -40,7 +40,11 @@ QVariantList ServerBridge::Installations() const {
                          .arg(QString::fromStdString(installation.loader))
                          .arg(QString::fromStdString(installation.minecraft));
         }
+        if (installation.refs > 0) {
+            label += QStringLiteral("  ·  %1 个实例").arg(installation.refs);
+        }
         map["label"] = label;
+        map["refs"] = installation.refs;
         out.append(map);
     }
     return out;
@@ -123,7 +127,7 @@ void ServerBridge::reloadInstallations() {
 
 void ServerBridge::createServer(const QString& name, int installationIndex, int port,
                                 int memoryMb, const QString& gamemode, const QString& difficulty,
-                                int maxPlayers) {
+                                int maxPlayers, const QString& seed) {
     const auto& installations = server_.Installations();
     if (installationIndex < 0 || static_cast<size_t>(installationIndex) >= installations.size()) {
         message_ = QStringLiteral("请选择一个服务端");
@@ -139,6 +143,7 @@ void ServerBridge::createServer(const QString& name, int installationIndex, int 
     options.gamemode = gamemode.toStdString();
     options.difficulty = difficulty.toStdString();
     options.max_players = maxPlayers;
+    options.seed = seed.trimmed().toStdString();
 
     std::string error;
     if (!server_.Create(options, error)) {
@@ -219,26 +224,6 @@ void ServerBridge::renameServer(const QString& name) {
     emit changed();
 }
 
-void ServerBridge::removeServer() {
-    if (selected_ < 0) return;
-    std::string error;
-    if (!server_.Remove(selected_, error)) {
-        message_ = QString::fromStdString(error);
-        emit changed();
-        return;
-    }
-    if (server_.Instances().empty()) {
-        selected_ = -1;
-    } else {
-        selected_ = std::min(selected_, static_cast<int>(server_.Instances().size()) - 1);
-    }
-    console_.clear();
-    last_console_.clear();
-    message_ = QStringLiteral("已删除服务器");
-    emit consoleChanged();
-    emit changed();
-}
-
 void ServerBridge::removeServerAt(int index) {
     if (index < 0 || static_cast<size_t>(index) >= server_.Instances().size()) return;
     std::string error;
@@ -259,6 +244,17 @@ void ServerBridge::removeServerAt(int index) {
     last_console_.clear();
     message_ = QStringLiteral("已删除服务器");
     emit consoleChanged();
+    emit changed();
+}
+
+void ServerBridge::removeInstallationAt(int index) {
+    std::string error;
+    if (!server_.RemoveInstallation(index, error)) {
+        message_ = QString::fromStdString(error);
+        emit changed();
+        return;
+    }
+    message_ = QStringLiteral("已删除服务端安装");
     emit changed();
 }
 
@@ -322,6 +318,9 @@ bool ServerBridge::saveServerProperties(const QVariantList& entries) {
 }
 
 void ServerBridge::Tick() {
+    // 进程退出后清掉 pid，只更新独立 run-state 缓存，不写实例 manifest。
+    server_.SyncPids();
+
     QString statuses;
     const auto& instances = server_.Instances();
     for (size_t i = 0; i < instances.size(); ++i) {

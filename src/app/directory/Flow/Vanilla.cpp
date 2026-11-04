@@ -1,6 +1,7 @@
 #include "app/directory/Flow/Vanilla.h"
 
 #include "app/directory/Flow/Support.h"
+#include "app/directory/Flow/Transaction.h"
 #include "app/directory/Installer/Version/Version.h"
 #include "app/tools/tools.h"
 
@@ -10,12 +11,13 @@ namespace flow {
 bool Vanilla::RunImpl(const Context& context, const Request& request, const Progress& progress,
                       Outcome& outcome, std::string& error) {
     Support::Report(progress, "读取原版 " + request.mc_version + " 的版本描述", 5);
-    if (!Support::EnsureVanillaJson(context, request.mc_version, error)) return false;
-
-    if (!installer::Version::WriteMarker(request.game_dir, request.mc_version, "原版", false)) {
-        error = "写托管标记失败: " + request.mc_version;
+    Transaction txn(request.game_dir, request.mc_version, "game", "原版", "",
+                    request.mc_version, "", true);
+    if (!txn.Ok()) {
+        error = txn.Error();
         return false;
     }
+    if (!Support::EnsureVanillaJson(context, request.mc_version, error)) return false;
 
     context.versions.Refresh();
     if (!context.versions.Select(request.mc_version)) {
@@ -31,7 +33,10 @@ bool Vanilla::RunImpl(const Context& context, const Request& request, const Prog
         return false;
     }
 
-    installer::Version::WriteMarker(request.game_dir, request.mc_version, "原版", true, true, true);
+    if (!txn.Commit()) {
+        error = txn.Error();
+        return false;
+    }
     outcome.version_id = request.mc_version;
     return true;
 }

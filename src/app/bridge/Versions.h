@@ -1,9 +1,11 @@
 // 版本视图：版本列表、选中版本详情、Java 列表与选择。
 #pragma once
 
+#include <QObject>
 #include <QString>
 #include <QStringList>
 
+#include <functional>
 #include <string>
 
 #include "app/directory/Directory.h"
@@ -11,7 +13,7 @@
 
 class BridgeVersions {
 public:
-    explicit BridgeVersions(Launch& launch);
+    BridgeVersions(Launch& launch, QObject* context);
 
     const QStringList& Names() const { return names_; }
     QString Selected() const { return selected_; }
@@ -25,13 +27,17 @@ public:
     int SelectedIndex() const { return selected_index_; }
 
     bool SelectAt(int index);
-    bool Select(const QString& id);
     void SelectInstalled(const std::string& id);
     void OpenFolderAt(int index);
-    void DeleteAt(int index);
+    // 删入口不删核心；失败返回中文错误。
+    bool DeleteAt(int index, std::string& error);
     void RenameAt(int index, const QString& name);
     void SelectJava(int index);
+    bool CanUninstallJava(int index) const;
+    bool UninstallJava(int index, std::string& error);
+    void InstallJava(int major, std::function<void(bool, const QString&)> done);
     void RefreshJavas();
+    void Refresh();
     void UpdateDetails();
 
     const Directory::VersionEntry* SelectedEntry() const;
@@ -40,9 +46,8 @@ public:
     std::string VersionIdAt(int index) const;
 
 private:
-    void Refresh();
-
     Launch& launch_;
+    QObject* context_;
     QStringList names_;
     QStringList ids_;
     QString selected_;

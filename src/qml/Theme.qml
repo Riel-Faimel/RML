@@ -26,4 +26,5 @@ QtObject {
     readonly property int gap: 12
     readonly property int headerHeight: 60
     readonly property int pagePadding: 24
+    readonly property int sidebarWidth: 280
 }

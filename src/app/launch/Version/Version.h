@@ -61,6 +61,8 @@ public:
     // 改名：写进版本的 rml.json，与目录名解耦
     bool Rename(const std::string& id, const std::string& name);
     const std::string& Selected() const { return selected_; }
+    // 选中入口引用的共享核心；没有 core 时退回入口自身。
+    std::string SelectedCore() const;
     bool HasSelection() const { return !selected_.empty(); }
 
     // 重新扫描 versions/（装完新版本后调用），保留仍然存在的选择

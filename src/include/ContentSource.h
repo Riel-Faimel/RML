@@ -12,8 +12,6 @@ public:
         std::string id;
         std::string slug;
         std::string title;
-        std::string description;
-        int64_t downloads = 0;
     };
 
     struct File {
@@ -29,21 +27,19 @@ public:
         std::string version_number;
         std::vector<std::string> game_versions;
         std::vector<std::string> loaders;
-        std::vector<std::string> required_projects;
         std::vector<File> files;
     };
 
     virtual ~ContentSource() = default;
 
-    virtual std::string Id() const = 0;           // "modrinth" / "curseforge"
     virtual std::string DisplayName() const = 0;  // 界面上显示的名字
 
     // 没配好（比如缺 API key）时给出原因，界面据此禁用
     virtual bool Ready(std::string& reason) const = 0;
 
-    virtual bool Search(const std::string& query, const std::string& loader,
-                        const std::string& mc_version, std::vector<Project>& out,
-                        std::string& error) = 0;
+    virtual bool Search(const std::string& query, const std::string& kind,
+                        const std::string& loader, const std::string& mc_version,
+                        std::vector<Project>& out, std::string& error) = 0;
 
     virtual bool Versions(const std::string& project_id, const std::string& loader,
                           const std::string& mc_version, std::vector<Version>& out,

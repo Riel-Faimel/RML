@@ -14,6 +14,14 @@ constexpr int kMaxAgeSeconds = 10 * 60;
 constexpr const char* kApiBase = "https://api.curseforge.com/v1";
 constexpr int kGameMinecraft = 432;
 constexpr int kClassMods = 6;
+constexpr int kClassResourcePacks = 12;
+constexpr int kClassShaders = 6552;
+
+int ClassFor(const std::string& kind) {
+    if (kind == "resourcepack") return kClassResourcePacks;
+    if (kind == "shader") return kClassShaders;
+    return kClassMods;
+}
 
 std::string UrlEncodeShim(const std::string& text) {
     std::string out;
@@ -62,9 +70,9 @@ bool CurseForge::Ready(std::string& reason) const {
     return true;
 }
 
-bool CurseForge::Search(const std::string& query, const std::string& loader,
-                        const std::string& mc_version, std::vector<Project>& out,
-                        std::string& error) {
+bool CurseForge::Search(const std::string& query, const std::string& kind,
+                        const std::string& loader, const std::string& mc_version,
+                        std::vector<Project>& out, std::string& error) {
     std::string reason;
     if (!Ready(reason)) {
         error = reason;
@@ -72,10 +80,11 @@ bool CurseForge::Search(const std::string& query, const std::string& loader,
     }
 
     std::string url = std::string(kApiBase) + "/mods/search?gameId=" + std::to_string(kGameMinecraft) +
-                      "&classId=" + std::to_string(kClassMods) + "&pageSize=20&searchFilter=" +
+                      "&classId=" + std::to_string(ClassFor(kind)) + "&pageSize=20&searchFilter=" +
                       UrlEncodeShim(query);
     if (!mc_version.empty()) url += "&gameVersion=" + UrlEncodeShim(mc_version);
-    const std::string loader_type = LoaderType(loader);
+    // 只有 Mod 用加载器类型过滤；材质包/光影没有 Mod 加载器概念。
+    const std::string loader_type = kind == "mod" ? LoaderType(loader) : std::string();
     if (!loader_type.empty()) url += "&modLoaderType=" + loader_type;
 
     std::string text;
@@ -102,8 +111,6 @@ bool CurseForge::Search(const std::string& query, const std::string& loader,
         project.id = std::to_string(item["id"].AsInt(0));
         project.slug = item["slug"].AsString();
         project.title = item["name"].AsString();
-        project.description = item["summary"].AsString();
-        project.downloads = item["downloadCount"].AsInt(0);
         if (project.id != "0") out.push_back(std::move(project));
     }
     (void)mc_version;

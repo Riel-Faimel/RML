@@ -1,8 +1,10 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import ".."
 import "../components"
+import "download"
 
 Item {
     id: page
@@ -13,10 +15,6 @@ Item {
     property int versionKind: 0
     property var loaderChoice: ({})
     property var loaderVersionChoice: ({})
-    property int pendingKind: 0
-    property int pendingIndex: -1
-    property string pendingLoader: ""
-    property string pendingMcVersion: ""
 
     function loaderFor(id) { return page.loaderChoice[id] || "原版" }
     function loaderVersionFor(id) { return page.loaderVersionChoice[id] || "" }
@@ -31,12 +29,9 @@ Item {
     function chooseLoader(id, name) {
         page.setLoader(id, name)
         page.setLoaderVersion(id, "")
-        page.pendingMcVersion = id
-        page.pendingLoader = name
         if (name === "原版") return
         bridge.loadLoaderVersions(id, name)
-        loaderDialog.selectedVersion = ""
-        loaderDialog.open()
+        loaderSidebar.openFor(name, id, "")
     }
 
     function installVersion(kind, index, loader, mcVersion) {
@@ -72,66 +67,19 @@ Item {
     // 默认就拉一次版本清单，不再依赖手动刷新
     Component.onCompleted: bridge.loadGameVersions()
 
-    SoftDialog {
-        id: loaderDialog
-        title: qsTr("选择 %1 版本").arg(page.pendingLoader)
-        okText: qsTr("确定")
-        side: true
-        width: 380
-        height: page.height
-        property string selectedVersion: ""
-
-        onOpened: selectedVersion = page.loaderVersionFor(page.pendingMcVersion)
+    FileDialog {
+        id: importFiles
+        title: qsTr("选择 Mod 文件")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("Mod 文件 (*.jar)")]
         onAccepted: {
-            if (selectedVersion.length > 0) {
-                page.setLoaderVersion(page.pendingMcVersion, selectedVersion)
-            }
+            var list = selectedFiles && selectedFiles.length > 0 ? selectedFiles : [selectedFile]
+            importDialog.openFor(list, bridge.selectedMinecraftVersion(), bridge.loader)
         }
+    }
 
-        Text {
-            Layout.fillWidth: true
-            text: bridge.loaderVersionsBusy
-                  ? qsTr("正在获取 %1 %2 的版本…").arg(page.pendingLoader).arg(page.pendingMcVersion)
-                  : bridge.loaderVersionsError
-            color: bridge.loaderVersionsError.length > 0 ? Theme.danger : Theme.textSecondary
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
-            visible: bridge.loaderVersionsBusy || bridge.loaderVersionsError.length > 0
-        }
-
-        ListView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: 6
-            model: bridge.loaderVersionOptions
-
-            delegate: Rectangle {
-                width: ListView.view.width
-                height: 38
-                radius: Theme.radiusSmall
-                color: modelData === loaderDialog.selectedVersion ? Theme.primarySoft : "#66FFFFFF"
-                border.width: 1
-                border.color: modelData === loaderDialog.selectedVersion ? Theme.primary : Theme.glassBorder
-
-                Text {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    verticalAlignment: Text.AlignVCenter
-                    text: modelData
-                    color: modelData === loaderDialog.selectedVersion ? Theme.primary : Theme.text
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: loaderDialog.selectedVersion = modelData
-                }
-            }
-        }
+    ImportModDialog {
+        id: importDialog
     }
 
     RowLayout {
@@ -140,52 +88,13 @@ Item {
         spacing: Theme.gap
 
         // 左：分类
-        GlassPanel {
+        CategoryPanel {
             backdrop: page.backdrop
-            Layout.preferredWidth: 200
+            Layout.preferredWidth: Theme.sidebarWidth
+            Layout.maximumWidth: Theme.sidebarWidth
             Layout.fillHeight: true
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 8
-
-                Repeater {
-                    model: [
-                        { key: "version", kind: "", label: qsTr("游戏版本") },
-                        { key: "mod", kind: "mod", label: qsTr("Mod") },
-                        { key: "shader", kind: "shader", label: qsTr("光影") },
-                        { key: "resourcepack", kind: "resourcepack", label: qsTr("材质包") }
-                    ]
-
-                    delegate: Rectangle {
-                        id: categoryItem
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 42
-                        radius: Theme.radius
-                        color: page.category === modelData.key ? Theme.primarySoft : "#66FFFFFF"
-                        border.width: 1
-                        border.color: page.category === modelData.key ? Theme.primary : "#55FFFFFF"
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            verticalAlignment: Text.AlignVCenter
-                            text: modelData.label
-                            font.pixelSize: 14
-                            color: page.category === modelData.key ? Theme.primary : Theme.text
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: page.activate(modelData.key, modelData.kind)
-                        }
-                    }
-                }
-
-                Item { Layout.fillHeight: true }
-            }
+            category: page.category
+            onActivated: function(key, kind) { page.activate(key, kind) }
         }
 
         // 右：内容
@@ -202,6 +111,7 @@ Item {
                 // 版本分类
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 40
                     visible: page.category === "version"
 
                     Text {
@@ -230,17 +140,24 @@ Item {
                                 font.pixelSize: 13
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                color: kindTab.checked ? "#FFFFFF" : Theme.primary
+                                color: kindTab.checked ? Theme.primaryText : Theme.primary
                             }
 
                             background: Rectangle {
                                 radius: Theme.radiusSmall
-                                color: kindTab.checked ? Theme.primary : "#88FFFFFF"
+                                color: kindTab.checked ? Theme.primary : Theme.glassHoverFill
                                 border.width: 1
                                 border.color: Theme.primary
                             }
                         }
                     }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                    visible: page.category === "version"
                 }
 
                 // 其它分类：搜索
@@ -260,9 +177,9 @@ Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 40
                         radius: Theme.radiusSmall
-                        color: "#88FFFFFF"
+                        color: Theme.glassHoverFill
                         border.width: 1
-                        border.color: "#55FFFFFF"
+                        border.color: Theme.glassBorder
 
                         TextField {
                             id: searchField
@@ -285,16 +202,23 @@ Item {
                         implicitHeight: 40
                         contentItem: Text {
                             text: parent.text
-                            color: "#FFFFFF"
+                            color: Theme.primaryText
                             font.pixelSize: 14
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
                         background: Rectangle {
                             radius: Theme.radiusSmall
-                            color: parent.enabled ? Theme.primary : "#99FFFFFF"
+                            color: parent.enabled ? Theme.primary : Theme.disabledFill
                         }
                         onClicked: bridge.searchContent(searchField.text, page.kind)
+                    }
+
+                    SoftButton {
+                        text: qsTr("导入 Mod")
+                        visible: page.kind === "mod"
+                        implicitHeight: 40
+                        onClicked: importFiles.open()
                     }
                 }
 
@@ -317,9 +241,9 @@ Item {
                         width: ListView.view.width
                         height: 46
                         radius: Theme.radius
-                        color: "#66FFFFFF"
+                        color: Theme.glassFill
                         border.width: 1
-                        border.color: "#55FFFFFF"
+                        border.color: Theme.glassBorder
 
                         RowLayout {
                             anchors.fill: parent
@@ -335,7 +259,7 @@ Item {
                                 color: Theme.text
                             }
 
-                            // 加载器：默认原版，点开可切换（菜单可扩展）
+                            // 加载器：默认原版，点开可切换
                             Button {
                                 id: loaderButton
                                 visible: page.category === "version"
@@ -357,7 +281,7 @@ Item {
 
                                 background: Rectangle {
                                     radius: Theme.radiusSmall
-                                    color: loaderButton.hovered ? Theme.primarySoft : "#88FFFFFF"
+                                    color: loaderButton.hovered ? Theme.primarySoft : Theme.glassHoverFill
                                     border.width: 1
                                     border.color: Theme.primary
                                 }
@@ -396,14 +320,14 @@ Item {
                                 implicitHeight: 30
                                 contentItem: Text {
                                     text: parent.text
-                                    color: "#FFFFFF"
+                                    color: Theme.primaryText
                                     font.pixelSize: 13
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
                                     radius: Theme.radiusSmall
-                                    color: parent.enabled ? Theme.primary : "#99FFFFFF"
+                                    color: parent.enabled ? Theme.primary : Theme.disabledFill
                                 }
                                 onClicked: page.category === "version"
                                                ? page.installVersion(page.versionKind, index,
@@ -450,5 +374,15 @@ Item {
                 }
             }
         }
+    }
+
+    LoaderSidebar {
+        id: loaderSidebar
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        width: 360
+        z: 20
+        onChosen: function(mcVersion, version) { page.setLoaderVersion(mcVersion, version) }
     }
 }

@@ -65,6 +65,13 @@ std::string File::Build(const Instance& instance, const std::string& existing,
     if (!preserve_existing || existing.empty()) {
         std::string out;
         for (const char* key : kManagedKeys) out += ManagedLine(values, key) + "\n";
+        if (!instance.seed.empty()) {
+            std::string seed = instance.seed;
+            for (char& c : seed) {
+                if (c == '\r' || c == '\n') c = ' ';
+            }
+            out += "level-seed=" + seed + "\n";
+        }
         return out;
     }
 

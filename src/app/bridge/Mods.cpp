@@ -8,10 +8,13 @@
 #include <vector>
 
 #include "app/bridge/Labels.h"
+#include "app/directory/Installer/Placement/Placement.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
 namespace {
+
+constexpr const char* kManifestName = "mods.json";
 
 QString FromStd(const std::string& text) { return QString::fromStdString(text); }
 
@@ -57,35 +60,31 @@ QVariantList BridgeMods::Repository(const std::string& game_dir, const Directory
     std::sort(files.begin(), files.end());
 
     for (const auto& file : files) {
-        QVariantMap info;
-        info["file"] = FromStd(file);
-        info["name"] = FromStd(file);
-        info["version"] = QString();
-        info["project"] = QString();
-        info["path"] = FromStd(tools::JoinPath(repo, file));
-        info["known"] = false;
-        info["compatible"] = false;
-        info["reason"] = QStringLiteral("缺少版本描述，请重新下载");
-
         Json::Value meta;
         std::string meta_text;
-        if (paths.ReadRepositoryModText(file, meta_text) && ParseJsonText(meta_text, meta)) {
-            const QStringList game_versions = JsonStringList(meta["gameVersions"]);
-            const QStringList loaders = JsonStringList(meta["loaders"]);
-            const bool mc_ok = !mc_version.empty() && game_versions.contains(FromStd(mc_version));
-            const bool loader_ok = !loader.empty() && loaders.contains(FromStd(loader));
-            info["known"] = true;
-            info["project"] = FromStd(meta["project"].AsString());
-            info["name"] = FromStd(meta["name"].AsString());
-            info["version"] = FromStd(meta["version"].AsString());
-            info["sha1"] = FromStd(meta["sha1"].AsString());
-            info["gameVersions"] = game_versions;
-            info["loaders"] = loaders;
-            info["compatible"] = mc_ok && loader_ok;
-            info["reason"] = info["compatible"].toBool()
-                                 ? QString()
-                                 : QStringLiteral("不适用于当前版本或加载器");
+        // 仓库统一读 mods/rml.json；缺少记录的 jar 不参与管理。
+        if (!paths.ReadRepositoryModText(file, meta_text) || !ParseJsonText(meta_text, meta)) {
+            continue;
         }
+
+        const QStringList game_versions = JsonStringList(meta["gameVersions"]);
+        const QStringList loaders = JsonStringList(meta["loaders"]);
+        const bool mc_ok = !mc_version.empty() && game_versions.contains(FromStd(mc_version));
+        const bool loader_ok = !loader.empty() && loaders.contains(FromStd(loader));
+        if (!mc_ok || !loader_ok) continue;
+
+        QVariantMap info;
+        info["file"] = FromStd(file);
+        info["path"] = FromStd(tools::JoinPath(repo, file));
+        info["known"] = true;
+        info["compatible"] = true;
+        info["reason"] = QString();
+        info["project"] = FromStd(meta["project"].AsString());
+        info["name"] = FromStd(meta["name"].AsString());
+        info["version"] = FromStd(meta["version"].AsString());
+        info["sha1"] = FromStd(meta["sha1"].AsString());
+        info["gameVersions"] = game_versions;
+        info["loaders"] = loaders;
         repository_items_.append(info);
     }
     return repository_items_;
@@ -96,10 +95,9 @@ QVariantList BridgeMods::Installed(const std::string& game_dir, const Directory:
 
     const Directory paths(game_dir);
     const std::string mods_dir = paths.InstalledModsRoot(entry.id);
-    std::vector<std::string> listed;
     Json::Value manifest;
     std::string manifest_text;
-    if (paths.ReadVersionText(entry.id, "mods.json", manifest_text) &&
+    if (paths.ReadVersionText(entry.id, kManifestName, manifest_text) &&
         ParseJsonText(manifest_text, manifest) && manifest["mods"].IsArray()) {
         for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
             const Json::Value& item = manifest["mods"].At(i);
@@ -113,27 +111,7 @@ QVariantList BridgeMods::Installed(const std::string& game_dir, const Directory:
             info["path"] = FromStd(tools::JoinPath(mods_dir, file));
             info["known"] = true;
             installed_items_.append(info);
-            listed.push_back(file);
         }
-    }
-
-    // 用户手动放进版本 mods 的文件也允许在列表里删除
-    std::error_code ec;
-    for (const auto& item : std::filesystem::directory_iterator(tools::ToPath(mods_dir), ec)) {
-        if (ec || !item.is_regular_file()) continue;
-        const auto name = item.path().filename().u8string();
-        const std::string file(name.begin(), name.end());
-        if (!EndsWithJar(file) || std::find(listed.begin(), listed.end(), file) != listed.end()) {
-            continue;
-        }
-        QVariantMap info;
-        info["file"] = FromStd(file);
-        info["name"] = FromStd(file);
-        info["version"] = QString();
-        info["project"] = QString();
-        info["path"] = FromStd(tools::JoinPath(mods_dir, file));
-        info["known"] = false;
-        installed_items_.append(info);
     }
     return installed_items_;
 }
@@ -158,8 +136,15 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
     const std::string source = item["path"].toString().toStdString();
     const std::string dest = tools::JoinPath(paths.InstalledModsRoot(entry.id), file);
     std::error_code ec;
-    std::filesystem::copy_file(tools::ToPath(source), tools::ToPath(dest),
-                               std::filesystem::copy_options::overwrite_existing, ec);
+    // 优先硬链接，仓库和实例不占两份空间；失败再复制。
+    std::filesystem::remove(tools::ToPath(dest), ec);
+    ec.clear();
+    std::filesystem::create_hard_link(tools::ToPath(source), tools::ToPath(dest), ec);
+    if (ec) {
+        ec.clear();
+        std::filesystem::copy_file(tools::ToPath(source), tools::ToPath(dest),
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+    }
     if (ec) {
         message = QStringLiteral("安装到版本失败：%1").arg(FromStd(file));
         return false;
@@ -180,7 +165,7 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
 
     Json::Value manifest;
     std::string manifest_text;
-    if (!paths.ReadVersionText(entry.id, "mods.json", manifest_text) ||
+    if (!paths.ReadVersionText(entry.id, kManifestName, manifest_text) ||
         !ParseJsonText(manifest_text, manifest)) {
         manifest = Json::Value::Object();
     }
@@ -207,7 +192,7 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
     record.Set("loaders", loaders);
     next.Push(record);
     manifest.Set("mods", next);
-    if (!paths.WriteVersionText(entry.id, "mods.json", manifest.Dump())) {
+    if (!paths.WriteVersionText(entry.id, kManifestName, manifest.Dump())) {
         message = QStringLiteral("写入版本 Mod 清单失败");
         return false;
     }
@@ -216,8 +201,88 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
     return true;
 }
 
+bool BridgeMods::Import(const std::string& game_dir, const std::string& source,
+                        const std::string& game_version, const std::string& loader,
+                        const std::string& mod_version, QString& message) {
+    if (game_version.empty() || loader.empty() || mod_version.empty()) {
+        message = QStringLiteral("游戏版本、加载器和 Mod 版本都不能为空");
+        return false;
+    }
+    const std::string loader_id = BridgeLabels::ContentLoaderId(loader, "");
+    if (loader_id.empty()) {
+        message = QStringLiteral("不认识的加载器：%1").arg(FromStd(loader));
+        return false;
+    }
+
+    const std::filesystem::path src = tools::ToPath(source);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(src, ec)) {
+        message = QStringLiteral("找不到要导入的文件：%1").arg(FromStd(source));
+        return false;
+    }
+    const auto file_name = src.filename().u8string();
+    const std::string source_file(file_name.begin(), file_name.end());
+    if (!EndsWithJar(source_file)) {
+        message = QStringLiteral("只能导入 .jar 模组文件");
+        return false;
+    }
+
+    Directory paths(game_dir);
+    std::string dir_error;
+    if (!tools::EnsureDir(paths.RepositoryModsRoot(), dir_error)) {
+        message = FromStd(dir_error);
+        return false;
+    }
+
+    const std::string dest = directory::installer::Placement::Resolve(
+        game_dir, directory::installer::Placement::Kind::Mod, source_file, false);
+    const auto dest_name_u8 = tools::ToPath(dest).filename().u8string();
+    const std::string dest_name(dest_name_u8.begin(), dest_name_u8.end());
+
+    std::filesystem::copy_file(src, tools::ToPath(dest), ec);
+    if (ec) {
+        message = QStringLiteral("复制到仓库失败：%1").arg(FromStd(dest_name));
+        return false;
+    }
+
+    std::string sha1;
+    if (!tools::Sha1File(dest, sha1)) {
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(dest), ignored);
+        message = QStringLiteral("计算 Mod 校验值失败");
+        return false;
+    }
+
+    const size_t dot = dest_name.find_last_of('.');
+    const std::string display_name = dot == std::string::npos ? dest_name : dest_name.substr(0, dot);
+
+    Json::Value meta = Json::Value::Object();
+    meta.Set("file", Json::Value::String(dest_name));
+    meta.Set("project", Json::Value::String(""));
+    meta.Set("name", Json::Value::String(display_name));
+    meta.Set("version", Json::Value::String(mod_version));
+    meta.Set("side", Json::Value::String("both"));
+    meta.Set("sha1", Json::Value::String(sha1));
+    Json::Value game_versions = Json::Value::Array();
+    game_versions.Push(Json::Value::String(game_version));
+    meta.Set("gameVersions", game_versions);
+    Json::Value loaders = Json::Value::Array();
+    loaders.Push(Json::Value::String(loader_id));
+    meta.Set("loaders", loaders);
+
+    if (!paths.WriteRepositoryModText(dest_name, meta.Dump())) {
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(dest), ignored);
+        message = QStringLiteral("写入 Mod 版本描述失败");
+        return false;
+    }
+
+    message = QStringLiteral("已导入 Mod 仓库：%1").arg(FromStd(dest_name));
+    return true;
+}
+
 bool BridgeMods::Remove(const std::string& game_dir, const Directory::VersionEntry& entry, int index,
-                  QString& message) {
+                        QString& message) {
     if (index < 0 || index >= installed_items_.size()) return false;
     const QVariantMap item = installed_items_.at(index).toMap();
     const std::string file = item["file"].toString().toStdString();
@@ -229,7 +294,7 @@ bool BridgeMods::Remove(const std::string& game_dir, const Directory::VersionEnt
 
     Json::Value manifest;
     std::string manifest_text;
-    if (paths.ReadVersionText(entry.id, "mods.json", manifest_text) &&
+    if (paths.ReadVersionText(entry.id, kManifestName, manifest_text) &&
         ParseJsonText(manifest_text, manifest) && manifest["mods"].IsArray()) {
         Json::Value next = Json::Value::Array();
         for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
@@ -238,7 +303,7 @@ bool BridgeMods::Remove(const std::string& game_dir, const Directory::VersionEnt
             }
         }
         manifest.Set("mods", next);
-        paths.WriteVersionText(entry.id, "mods.json", manifest.Dump());
+        paths.WriteVersionText(entry.id, kManifestName, manifest.Dump());
     }
 
     message = QStringLiteral("已从版本移除：%1").arg(FromStd(file));

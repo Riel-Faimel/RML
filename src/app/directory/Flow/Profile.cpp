@@ -7,6 +7,7 @@
 #include "app/directory/Directory.h"
 #include "app/directory/Flow/Processors.h"
 #include "app/directory/Flow/Support.h"
+#include "app/directory/Flow/Transaction.h"
 #include "app/directory/Installer/Version/Version.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
@@ -46,7 +47,9 @@ bool CopyFile(const std::string& from, const std::string& to, std::string& error
 
 bool PickJava(const Context& context, const std::string& mc_version, std::string& java,
               std::string& error) {
-    const std::string json_path = Directory(context.versions.GameDir()).VersionJson(mc_version);
+    const Directory paths(context.versions.GameDir());
+    std::string json_path = paths.VersionJson(mc_version);
+    if (!tools::PathExists(json_path)) json_path = paths.CoreJson(paths.CoreForEntry(mc_version));
 
     int major = 8;
     Json::Value root;
@@ -139,7 +142,9 @@ bool Profile::Install(const Context& context, const Request& request, const std:
     const std::string libraries_root = paths.LibrariesRoot();
     const std::string cache_dir = Directory::InstallerCacheDir();
     const std::string temp_root = Directory::TempFile(SafeName(loader) + "-" + SafeName(maven_version));
-    const bool base_preexisting = tools::PathExists(paths.VersionJson(request.mc_version));
+    const bool base_preexisting =
+        tools::PathExists(paths.VersionJson(request.mc_version)) ||
+        tools::PathExists(paths.CoreJson(paths.CoreForEntry(request.mc_version)));
 
     std::string dir_error;
     if (!tools::EnsureDir(cache_dir, dir_error) || !tools::EnsureDir(temp_root, dir_error)) {
@@ -160,6 +165,9 @@ bool Profile::Install(const Context& context, const Request& request, const std:
 
     // —— 原版底座：版本描述 + 客户端 jar（处理器要拿它当输入） ——
     report("准备原版 " + request.mc_version, 3);
+    if (!base_preexisting) {
+        if (!Support::WriteBaseMarker(game_dir, request.mc_version, error)) return false;
+    }
     if (!Support::EnsureVanillaJson(context, request.mc_version, error)) return false;
     auto client_progress = segment(3, 8);
     if (!Support::EnsureClientJar(context, request.mc_version, client_progress, error)) return false;
@@ -223,8 +231,10 @@ bool Profile::Install(const Context& context, const Request& request, const std:
     }
 
     report("写入版本描述", 18);
-    if (!installer::Version::WriteMarker(game_dir, version_id, loader, false)) {
-        error = "写托管标记失败: " + version_id;
+    Transaction txn(game_dir, version_id, "loader", loader, maven_version, request.mc_version,
+                    request.mc_version, false);
+    if (!txn.Ok()) {
+        error = txn.Error();
         return false;
     }
     if (!installer::Version::WriteVersionJson(game_dir, version_id, version_json, error)) return false;
@@ -290,10 +300,9 @@ bool Profile::Install(const Context& context, const Request& request, const std:
         return false;
     }
 
-    installer::Version::WriteMarker(game_dir, version_id, loader, true);
-    // 只有安装器顺手创建的原版底座才标成依赖；用户原有的原版不动，保持可见
-    if (!base_preexisting) {
-        installer::Version::WriteMarker(game_dir, request.mc_version, "原版", true, false, true);
+    if (!txn.Commit()) {
+        error = txn.Error();
+        return false;
     }
 
     outcome.version_id = version_id;

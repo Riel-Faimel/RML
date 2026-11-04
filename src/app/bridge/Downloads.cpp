@@ -27,6 +27,12 @@ BridgeDownloads::BridgeDownloads(Launch& launch, NetTask& tasks, QObject* contex
       installed_(std::move(installed)),
       content_(launch, tasks, context, state_, download_changed_) {}
 
+BridgeDownloads::~BridgeDownloads() {
+    for (auto& worker : workers_) {
+        if (worker.joinable()) worker.join();
+    }
+}
+
 const QStringList* BridgeDownloads::VersionIdsFor(int kind) const {
     if (kind == 1) return &snapshot_ids_;
     if (kind == 2) return &april_ids_;
@@ -46,7 +52,7 @@ void BridgeDownloads::LoadGameVersions() {
     state_.status = QStringLiteral("正在获取版本清单…");
     download_changed_();
 
-    std::thread([this] {
+    std::thread worker([this] {
         std::vector<download::versionsource::Mojang::Entry> entries;
         std::string error;
         const bool ok = launch_.Downloader().Sources().Game().List(entries, error);
@@ -93,7 +99,8 @@ void BridgeDownloads::LoadGameVersions() {
                 download_changed_();
             },
             Qt::QueuedConnection);
-    }).detach();
+    });
+    workers_.push_back(std::move(worker));
 }
 
 void BridgeDownloads::LoadLoaderVersions(const QString& mc_version, const QString& loader) {
@@ -103,7 +110,7 @@ void BridgeDownloads::LoadLoaderVersions(const QString& mc_version, const QStrin
     loader_versions_error_.clear();
     download_changed_();
 
-    std::thread([this, mc_version, loader] {
+    std::thread worker([this, mc_version, loader] {
         std::vector<std::string> versions;
         std::string error;
         const std::string mc = mc_version.toStdString();
@@ -133,7 +140,8 @@ void BridgeDownloads::LoadLoaderVersions(const QString& mc_version, const QStrin
                 download_changed_();
             },
             Qt::QueuedConnection);
-    }).detach();
+    });
+    workers_.push_back(std::move(worker));
 }
 
 void BridgeDownloads::InstallGame(int kind, int index, const QString& loader,
@@ -162,7 +170,7 @@ void BridgeDownloads::InstallGame(int kind, int index, const QString& loader,
     state_.status = QStringLiteral("正在安装 %1（%2）…").arg(FromStd(mc_version)).arg(loader);
     download_changed_();
 
-    std::thread([this, mc_version, loader_name, loader_version] {
+    std::thread worker([this, mc_version, loader_name, loader_version] {
         directory::flow::Context context{launch_.Versions(), launch_.Tools(),
                                         launch_.Downloader().Sources(),
                                         launch_.Downloader().Installers()};
@@ -216,7 +224,8 @@ void BridgeDownloads::InstallGame(int kind, int index, const QString& loader,
                 changed_();
             },
             Qt::QueuedConnection);
-    }).detach();
+    });
+    workers_.push_back(std::move(worker));
 }
 
 void BridgeDownloads::InstallServer(int kind, int index, const QString& loader) {
@@ -227,8 +236,8 @@ void BridgeDownloads::InstallServer(int kind, int index, const QString& loader) 
 
     const std::string mc_version = ids->at(index).toStdString();
     const std::string loader_name = loader.toStdString();
-    if (loader_name != "原版" && loader_name != "Fabric") {
-        state_.status = QStringLiteral("服务端暂不支持 %1（当前只有原版和 Fabric）").arg(loader);
+    if (loader_name != "原版" && loader_name != "Fabric" && loader_name != "Forge") {
+        state_.status = QStringLiteral("服务端暂不支持 %1（当前只有原版、Fabric 和 Forge）").arg(loader);
         download_changed_();
         return;
     }
@@ -242,7 +251,7 @@ void BridgeDownloads::InstallServer(int kind, int index, const QString& loader) 
                         .arg(loader);
     download_changed_();
 
-    std::thread([this, mc_version, loader_name] {
+    std::thread worker([this, mc_version, loader_name] {
         server::Installer installer(launch_.Versions(), launch_.Tools(),
                                     launch_.Downloader().Sources(),
                                     launch_.Downloader().Installers().Transfers());
@@ -266,7 +275,9 @@ void BridgeDownloads::InstallServer(int kind, int index, const QString& loader) 
         std::string error;
         const bool ok = loader_name == "Fabric"
                             ? installer.Fabric(mc_version, progress, version_id, error)
-                            : installer.Vanilla(mc_version, progress, version_id, error);
+                            : (loader_name == "Forge"
+                                   ? installer.Forge(mc_version, progress, version_id, error)
+                                   : installer.Vanilla(mc_version, progress, version_id, error));
 
         QMetaObject::invokeMethod(
             context_,
@@ -279,7 +290,8 @@ void BridgeDownloads::InstallServer(int kind, int index, const QString& loader) 
                 download_changed_();
             },
             Qt::QueuedConnection);
-    }).detach();
+    });
+    workers_.push_back(std::move(worker));
 }
 
 

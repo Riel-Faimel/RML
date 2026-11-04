@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "app/directory/Directory.h"
+#include "app/json/JsonArena.h"
 #include "app/tools/Json.h"
 #include "app/tools/tools.h"
 
@@ -55,12 +56,15 @@ std::string JoinUrl(const std::string& base, const std::string& path) {
     return base + "/" + path;
 }
 
+}  // namespace
+
 // 原版与 Fabric 共用一份 rml.json 写法；Fabric 额外带 mainClass/classpath
-bool WriteServerMarker(const launch::Version& versions, const std::string& id,
-                       const std::string& name, const std::string& loader,
-                       const std::string& mc_version, int java_major,
-                       const std::string& main_class, const std::vector<std::string>& classpath,
-                       std::string& error) {
+bool Installer::WriteServerMarker(const launch::Version& versions, const std::string& id,
+                                  const std::string& name, const std::string& loader,
+                                  const std::string& mc_version, int java_major,
+                                  const std::string& main_class,
+                                  const std::vector<std::string>& classpath,
+                                  const std::string& arg_file, std::string& error) {
     const std::string dir = versions.VersionDir(id);
     std::string dir_error;
     if (!tools::EnsureDir(dir, dir_error)) {
@@ -68,33 +72,52 @@ bool WriteServerMarker(const launch::Version& versions, const std::string& id,
         return false;
     }
 
-    Json::Value root = Json::Value::Object();
-    root.Set("managed", Json::Value::Bool(true));
-    root.Set("kind", Json::Value::String("server"));
-    root.Set("loader", Json::Value::String(loader));
-    root.Set("minecraft", Json::Value::String(mc_version));
-    root.Set("serverJar", Json::Value::String("server.jar"));
-    root.Set("javaMajor", Json::Value::Int(java_major));
-    root.Set("complete", Json::Value::Bool(true));
-    root.Set("name", Json::Value::String(name));
-    if (!main_class.empty()) root.Set("mainClass", Json::Value::String(main_class));
-    if (!classpath.empty()) {
+    const std::string path = tools::JoinPath(dir, "rml.json");
+    auto j = JsonArena::Instance().Open(path);
+    if (!j) {
+        error = j.error();
+        return false;
+    }
+    j["schema"] = Json::Value::Int(2);
+    j["id"] = Json::Value::String(id);
+    j["role"] = Json::Value::String("server");
+    j["base"] = Json::Value::String("");
+    j["loaderVersion"] = Json::Value::String("");
+    j["userInstalled"] = Json::Value::Bool(true);
+    j["state"] = Json::Value::String("committed");
+    j["fresh"] = Json::Value::Bool(false);
+    j["managed"] = Json::Value::Bool(true);
+    j["kind"] = Json::Value::String("server");
+    j["loader"] = Json::Value::String(loader);
+    j["minecraft"] = Json::Value::String(mc_version);
+    // 服务端安装只引用核心；server.jar / Forge args 留在自己的入口，不搬进 cores。
+    j["core"] = Json::Value::String(mc_version);
+    j["serverJar"] = Json::Value::String("server.jar");
+    j["javaMajor"] = Json::Value::Int(java_major);
+    if (arg_file.empty()) {
+        j.remove("argFile");
+    } else {
+        j["argFile"] = Json::Value::String(arg_file);
+        j.remove("serverJar");
+    }
+    j["complete"] = Json::Value::Bool(true);
+    j["name"] = Json::Value::String(name);
+    if (main_class.empty()) {
+        j.remove("mainClass");
+    } else {
+        j["mainClass"] = Json::Value::String(main_class);
+    }
+    if (classpath.empty()) {
+        j.remove("classpath");
+    } else {
         Json::Value entries = Json::Value::Array();
         for (const auto& relative : classpath) {
             entries.Push(Json::Value::String(relative));
         }
-        root.Set("classpath", std::move(entries));
+        j["classpath"] = std::move(entries);
     }
-
-    const std::string path = tools::JoinPath(dir, "rml.json");
-    if (!Directory::WriteTextFile(path, root.Dump())) {
-        error = "写入服务端安装标记失败: " + path;
-        return false;
-    }
-    return true;
+    return j.commit(error);
 }
-
-}  // namespace
 
 Installer::Installer(launch::Version& versions, launch::Environment& environment,
                      download::VersionSource& sources, directory::installer::Transfer& transfer)
@@ -262,7 +285,7 @@ bool Installer::Fabric(const std::string& mc_version, const Progress& progress,
     }
 
     if (!WriteServerMarker(versions_, id, name, "Fabric", mc_version, java_major, main_class,
-                           classpath, error)) {
+                           classpath, std::string(), error)) {
         return false;
     }
     version_id = id;
@@ -286,12 +309,8 @@ bool Installer::Prepare(const std::string& id, const std::string& name, const st
     // 目录里已经有别的版本（客户端/外部放入的版本）时不覆盖
     const std::string marker_path = tools::JoinPath(dir, "rml.json");
     if (tools::PathExists(marker_path)) {
-        Json::Value marker;
-        Json parser;
-        std::string parse_error;
-        const std::string text = Directory::ReadTextFile(marker_path);
-        if (text.empty() || !parser.Parse(text, marker, parse_error) ||
-            marker["kind"].AsString() != "server") {
+        auto j = JsonArena::Instance().Open(marker_path);
+        if (!j || j.Get("kind").AsString() != "server") {
             error = "版本目录被占用: " + dir + "（已有非服务端版本）";
             return false;
         }
@@ -303,7 +322,7 @@ bool Installer::WriteMarker(const std::string& id, const std::string& name,
                             const std::string& loader, const std::string& mc_version,
                             int java_major, std::string& error) const {
     return WriteServerMarker(versions_, id, name, loader, mc_version, java_major, std::string(),
-                             {}, error);
+                             {}, std::string(), error);
 }
 
 }  // namespace server

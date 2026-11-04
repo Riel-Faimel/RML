@@ -65,12 +65,6 @@ int64_t Json::Value::AsInt(int64_t fallback) const {
     return fallback;
 }
 
-double Json::Value::AsDouble(double fallback) const {
-    if (type_ == Type::Double) return double_;
-    if (type_ == Type::Int) return static_cast<double>(int_);
-    return fallback;
-}
-
 const std::string& Json::Value::AsString() const {
     static const std::string kEmpty;
     return type_ == Type::String ? string_ : kEmpty;
@@ -97,6 +91,29 @@ const std::string& Json::Value::KeyAt(size_t index) const {
 const Json::Value& Json::Value::operator[](std::string_view key) const {
     const Value* found = Find(key);
     return found ? *found : kNullValue;
+}
+
+Json::Value& Json::Value::operator[](std::string_view key) {
+    if (type_ != Type::Object) {
+        type_ = Type::Object;
+        object_.clear();
+    }
+    for (auto& [k, v] : object_) {
+        if (k == key) return v;
+    }
+    object_.emplace_back(std::string(key), Value());
+    return object_.back().second;
+}
+
+bool Json::Value::Remove(std::string_view key) {
+    if (type_ != Type::Object) return false;
+    for (auto it = object_.begin(); it != object_.end(); ++it) {
+        if (it->first == key) {
+            object_.erase(it);
+            return true;
+        }
+    }
+    return false;
 }
 
 const Json::Value* Json::Value::Find(std::string_view key) const {

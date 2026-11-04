@@ -12,8 +12,6 @@ std::string Placement::Directory(const std::string& instance_dir, Kind kind) {
         case Kind::Mod: return paths.ModsRoot();
         case Kind::Shaderpack: return paths.ShaderPacksRoot();
         case Kind::Resourcepack: return paths.ResourcePacksRoot();
-        case Kind::Datapack: return paths.DatapacksRoot();
-        case Kind::World: return paths.SavesRoot();
     }
     return instance_dir;
 }

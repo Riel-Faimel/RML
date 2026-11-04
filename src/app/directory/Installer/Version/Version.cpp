@@ -13,6 +13,13 @@ namespace {
 
 constexpr const char* kOsName = "windows";
 
+bool IsUnder(const std::string& path, const std::string& root) {
+    std::string a = tools::ToLower(path);
+    std::string b = tools::ToLower(root);
+    if (!b.empty() && b.back() != '/' && b.back() != '\\') b += '/';
+    return a.size() >= b.size() && a.compare(0, b.size(), b) == 0;
+}
+
 bool MatchesRules(const Json::Value& rules) {
     if (!rules.IsArray() || rules.Size() == 0) return true;
     bool allowed = false;
@@ -32,19 +39,26 @@ bool MatchesRules(const Json::Value& rules) {
 
 }  // namespace
 
-bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
-                             std::vector<Transfer::Task>& out, std::string& error) const {
-    (void)error;
+void Version::BuildCoreTasks(const launch::Version::Detail& detail,
+                             std::vector<Transfer::Task>& out) const {
     const Directory& paths = version_.Paths();
     const std::string selected = version_.Selected();
-    const Directory::InstallTarget target = paths.Install("vanilla", selected);
+    const Directory::InstallTarget target = paths.Install(selected);
 
     if (!detail.client_url.empty()) {
         Transfer::Task task;
         task.url = detail.client_url;
         task.sha1 = detail.client_sha1;
-        // 继承来的客户端 jar（Forge 继承原版）已经在原版目录里，别再拷一份到加载器目录
-        task.dest = detail.client_jar.empty() ? target.client_jar : detail.client_jar;
+        // 继承来的客户端 jar（Forge 继承原版）已经在原版目录/核心里，别再拷一份到加载器目录；
+        // 但核心是不可变的，修复时不能写回 cores，改成落到入口自己的 jar。
+        const std::string cores_root = paths.CoresRoot();
+        if (detail.client_jar.empty()) {
+            task.dest = target.client_jar;
+        } else if (IsUnder(detail.client_jar, cores_root)) {
+            task.dest = target.client_jar;
+        } else {
+            task.dest = detail.client_jar;
+        }
         task.label = selected + ".jar";
         task.size = detail.client_size;
         out.push_back(std::move(task));
@@ -93,14 +107,12 @@ bool Version::BuildCoreTasks(const launch::Version::Detail& detail,
         task.label = "assets/indexes/" + detail.asset_index + ".json";
         out.push_back(std::move(task));
     }
-    return true;
 }
 
 bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                               std::vector<Transfer::Task>& out, std::string& error) const {
     const Directory paths(version_.GameDir());
-    const Directory::InstallTarget target =
-        paths.Install("vanilla", version_.Selected());
+    const Directory::InstallTarget target = paths.Install(version_.Selected());
     const std::string index_path = target.AssetIndex(detail.asset_index);
     const std::string text = Directory::ReadTextFile(index_path);
     if (text.empty()) {
@@ -136,18 +148,6 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::
     return true;
 }
 
-bool Version::Inspect(std::vector<std::string>& missing, std::string& error) const {
-    launch::Version::Detail detail;
-    if (!version_.LoadDetail(detail, error)) return false;
-
-    std::vector<Transfer::Task> tasks;
-    BuildCoreTasks(detail, tasks, error);
-    for (const auto& task : tasks) {
-        if (!Transfer::Verify(task.dest, task.sha1)) missing.push_back(task.label);
-    }
-    return true;
-}
-
 bool Version::Install(const Transfer& transfer, const Transfer::Progress& progress,
                       Transfer::Result& result, std::string& error, bool apply_defaults,
                       std::string assets_root) const {
@@ -155,7 +155,7 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
     if (!version_.LoadDetail(detail, error)) return false;
 
     std::vector<Transfer::Task> core;
-    BuildCoreTasks(detail, core, error);
+    BuildCoreTasks(detail, core);
     if (!transfer.Run(core, progress, result, error)) return false;
 
     // 资源索引落地之后才知道有哪些对象
@@ -165,24 +165,10 @@ bool Version::Install(const Transfer& transfer, const Transfer::Progress& progre
 
     if (!ExtractNatives(detail, error)) return false;
 
-    if (apply_defaults) ApplyDefaults(version_.GameDir());
+    if (apply_defaults) {
+        ApplyDefaults(version_.Paths().InstalledGameRoot(version_.Selected()));
+    }
     return true;
-}
-
-bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
-                          const std::string& loader, bool complete, bool user_installed,
-                          bool write_user) {
-    const Directory paths(game_dir);
-    const std::string dir = paths.VersionDir(id);
-    std::string error;
-    if (!tools::EnsureDir(dir, error)) return false;
-
-    Json::Value root = Json::Value::Object();
-    root.Set("managed", Json::Value::Bool(true));
-    root.Set("loader", Json::Value::String(loader));
-    root.Set("complete", Json::Value::Bool(complete));
-    if (write_user) root.Set("user", Json::Value::Bool(user_installed));
-    return Directory::WriteTextFile(paths.VersionDir(id) + "/rml.json", root.Dump());
 }
 
 bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string& error) const {
@@ -230,12 +216,12 @@ bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string&
     return true;
 }
 
-void Version::ApplyDefaults(const std::string& game_dir) {
+void Version::ApplyDefaults(const std::string& instance_dir) {
     // Forge/Fabric 首次启动前就先建好 mods，避免用户找不到放 Mod 的位置
     std::string mods_error;
-    Directory(game_dir).EnsureModsRoot(mods_error);
+    Directory(instance_dir).EnsureModsRoot(mods_error);
 
-    const std::string path = Directory(game_dir).GameFile("options.txt");
+    const std::string path = Directory(instance_dir).GameFile("options.txt");
     const std::string text = Directory::ReadTextFile(path);
 
     // 新装：直接给一份最小配置，游戏自己会补全其余项

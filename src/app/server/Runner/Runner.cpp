@@ -190,11 +190,6 @@ bool Runner::ForceStop(std::string& error) {
     return true;
 }
 
-void Runner::Detach() {
-    // 只放掉句柄，进程继续独立运行
-    CloseHandles();
-}
-
 bool Runner::PidAlive(int pid) {
     if (pid <= 0) return false;
     HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE,

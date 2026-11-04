@@ -138,7 +138,9 @@ bool Processors::Run(const std::string& java, const std::string& game_dir,
     }
 
     tokens["SIDE"] = "client";
-    tokens["MINECRAFT_JAR"] = paths.VersionJar(mc_version);
+    tokens["MINECRAFT_JAR"] = tools::PathExists(paths.VersionJar(mc_version))
+                                  ? paths.VersionJar(mc_version)
+                                  : paths.CoreJar(paths.CoreForEntry(mc_version));
     tokens["MINECRAFT_VERSION"] = mc_version;
     tokens["ROOT"] = game_dir;
     tokens["INSTALLER"] = installer_jar;

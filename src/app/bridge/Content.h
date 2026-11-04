@@ -27,7 +27,7 @@ public:
     void Search(const QString& query, const QString& kind, const std::string& mc_version,
                 const std::string& loader);
     void Install(int index, const std::string& mc_version, const std::string& loader,
-                 const std::string& instance_dir);
+                 const std::string& repo_dir, const std::string& instance_dir);
 
 private:
     ContentSource* SelectedSource();

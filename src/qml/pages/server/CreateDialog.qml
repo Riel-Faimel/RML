@@ -38,11 +38,13 @@ SoftDialog {
         if (isNaN(memory)) memory = 2048
         var maxPlayers = parseInt(createMaxPlayersField.text)
         if (isNaN(maxPlayers)) maxPlayers = 20
+        var seed = createSeedField.text.trim()
 
         var installation = Math.max(0, createInstallationBox.currentIndex)
         serverBridge.createServer(name, installation, port, memory,
                                   dialog.gamemodes[createGamemodeBox.currentIndex],
-                                  dialog.difficulties[createDifficultyBox.currentIndex], maxPlayers)
+                                  dialog.difficulties[createDifficultyBox.currentIndex], maxPlayers,
+                                  seed)
     }
 
     onOpened: {
@@ -52,6 +54,7 @@ SoftDialog {
         createPortField.text = "25565"
         createMemoryField.text = "2048"
         createMaxPlayersField.text = "20"
+        createSeedField.text = ""
         createInstallationBox.currentIndex = 0
         createGamemodeBox.currentIndex = 0
         createDifficultyBox.currentIndex = 1
@@ -163,6 +166,19 @@ SoftDialog {
                 Layout.fillWidth: true
                 text: "20"
                 validator: IntValidator { bottom: 1; top: 1000 }
+            }
+
+            Text {
+                text: qsTr("世界种子")
+                font.pixelSize: 12
+                color: Theme.textSecondary
+                Layout.preferredWidth: 68
+            }
+
+            SoftField {
+                id: createSeedField
+                Layout.fillWidth: true
+                placeholderText: qsTr("留空则随机生成")
             }
 
             Text {

@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QUrl>
 
@@ -27,10 +28,11 @@ QString CustomBackgroundFile() {
 
 void RemoveCustomBackgrounds(const QString& keep = QString()) {
     QDir dir(FromStd(Directory::DataRoot()));
+    const QString kept = keep.isEmpty() ? QString() : QFileInfo(keep).fileName();
     for (const QString& name : dir.entryList({QStringLiteral("background*.png")}, QDir::Files)) {
-        const QString path = dir.filePath(name);
-        if (!keep.isEmpty() && path == keep) continue;
-        QFile::remove(path);
+        // 只比较文件名：DataRoot 是反斜杠，QDir::filePath 可能换成斜杠
+        if (!kept.isEmpty() && name == kept) continue;
+        QFile::remove(dir.filePath(name));
     }
 }
 

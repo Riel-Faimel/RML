@@ -2,7 +2,6 @@
 #pragma once
 
 #include <filesystem>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,8 +44,7 @@ bool ExtractArchive(const std::string& archive, const std::string& dest, std::st
 bool ExtractEntry(const std::string& archive, const std::string& entry, const std::string& dest,
                   std::string& out_path, std::string& error);
 
-// %APPDATA%\RML：RML 自己的数据根目录由 Directory 模块管理
-// 校验与下载
+// 校验
 std::string Sha1Hex(const void* data, size_t size);
 bool Sha1File(const std::string& path, std::string& hex);
 

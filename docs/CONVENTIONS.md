@@ -13,7 +13,13 @@ src/
     Bridge.*             应用层：把模块能力暴露给 QML
     ServerBridge.*       应用层：服务器页专用桥
     tools/               工具模块（唯一允许自由函数的模块）
+    json/                全局 JSON 对象分配器（JsonArena / JsonProxy）
     directory/           目录管理模块：数据根 / 游戏根下的全部路径
+      Cores.cpp          共享游戏核心（cores/<id>）的建立与硬链接
+      Cores.Scan.cpp     核心清单、refs/孤立核心、显式删除
+      Migration.cpp      核心/入口分离迁移的执行（WAL + 回滚）
+      Migration/         迁移计划、journal、rml 备份
+      Versions.cpp       versions/ 扫描与 rml 事务恢复
       Directory.h        其他模块统一从这里取 versions/libraries/assets/servers 等路径
     launch/              启动模块
       Launch.h           组合：Version + Environment + Starter + Download
@@ -22,7 +28,7 @@ src/
       Starter/           命令行装配与进程启动
     server/              服务端模块
       Server.h           组合：Catalog + Runner（全局命名空间）
-      Catalog/           服务端安装扫描 + 实例清单（servers.json）
+      Catalog/           服务端安装扫描 + 实例 manifest（servers/<dir>/rml.json）
       Runner/            服务端进程、stdin 命令、pid/停止
       Installer/         原版 / Fabric 服务端下载
       Instance/          实例数据结构
@@ -35,7 +41,7 @@ src/
   include/               纯虚接口（AccountProvider、ContentSource…）
   json/                  默认值 JSON（不是解析器）
   qml/                   Qt Quick 前端
-  test/                  rml_check：不开窗口的装配自检
+  test/                  rml_check 装配自检 + rml_cores_test 迁移/引用测试（临时目录）
 tools/                   deploy.bat
 ```
 
@@ -79,7 +85,8 @@ class Fabric  : public Flow<Fabric>  { ... };
   只从 `Directory` 模块取，其他模块不再自己拼路径
 - 版本目录由 `Directory::RefreshVersions()` 扫描，`Versions()` / `VisibleVersions()` 返回容器引用；
   `launch::Version` 持有 `Directory`，读的是同一份容器，刷新后立即反映
-- Forge/NeoForge 的底座默认标成依赖并隐藏；Vanilla 安装会把 `user=true`，用户自己装的原版仍然显示
+- 原版底座写 `role: "base"`，加载器版本写 `base: "<原版 id>"`；删除加载器版本后底座仍按 role 隐藏，不再靠 `user` 或 id 后缀推断
+- 用户自己装的原版写 `role: "game"`，保持可见；外部版本没有 `rml.json`，重命名时补 `role: "external"`
 - 全部用 `tools::ToPath(text)` 把 UTF-8 字符串转成 `std::filesystem::path`
 - **不要直接用 `std::filesystem::u8path`**，它在 C++20 已弃用，GCC 15 会报 `-Wdeprecated-declarations`
 - 写文件前先 `tools::EnsureDir(parent)`；Windows 上目录不存在时 `CreateFile` 会直接失败
@@ -93,6 +100,7 @@ class Fabric  : public Flow<Fabric>  { ... };
   - `deploy` 时 `deploy.bat` 的输出重定向到 `build/deploy.log`，失败才提示
   - 交付前必须先关掉正在运行的 RML，否则 `dist` 被占用，deploy 会失败
 - 依赖：`-MMD -MP` + `-include *.d`，**改了头文件必须重编**，否则会出现对象布局不一致导致的段错误
+- 迁移/引用/服务端 manifest 自检：`mingw32-make cores-test`（全部在 `build/` 临时目录，不碰真实 `.minecraft`）
 - 并行构建看 `CXX/LINK` 行确认真正重编了哪些文件
 
 ### 工具链
@@ -140,24 +148,43 @@ class Fabric  : public Flow<Fabric>  { ... };
 - 初始值不要依赖布局结果（初始 `height` 常为 0）；`Behavior` 在布局完成前应禁用，否则会补播一段初始动画
 - 长路径/长串文本用 `Text.WrapAnywhere`，并给容器 `Layout.minimumWidth: 0`，否则会把窗口撑破
 
-## 7. 版本目录
+## 7. 版本目录与 rml.json
 
-- 版本目录 = `versions/<id>/`，必须有可解析的 `<id>.json`（含 `id` 字段），否则不列出来
-- `rml.json` 是托管标记：`{ "managed": true, "loader": "Fabric", "complete": true, "name": "显示名" }`
-  - 没有该文件 = 外部版本
-  - `name` 与目录名解耦，重命名只改这里
-- 安装新版本：先落 json → 再拉 client/libraries/assets → 最后解压 natives（老版本）
+- `cores/<core-id>/` 是隐藏的共享游戏核心：`<core-id>.json`、`<core-id>.jar`、`<core-id>-natives/`、`rml.json`（kind=core）。核心不进版本列表，用户不能直接选核心启动。
+- `versions/<id>/` 是版本入口（A）：rml.json、加载器 profile、saves/mods/options/logs。核心文件必须物理归 cores；原版入口迁移后不再保留 json/jar/natives，加载器入口只保留自己的 profile 和私有数据。
+- `servers/<dir>/` 是服务端实例，`rml.json`（kind=serverInstance）是唯一事实来源；服务端安装同样是 `versions/<id>` 入口，`serverJar`/`argFile` 留在入口，不搬进 cores。
+- 入口有效性：有 rml，且 `versions/<id>/<id>.json` 或 `cores/<core>/<core>.json` 可解析；服务端安装没有版本描述也有效。
+- `rml.json` 是版本管理的**唯一事实来源**，schema 2 字段：
+  - `id` / `name`
+  - `role`：`game` / `loader` / `base` / `server` / `external`
+  - `loader` / `loaderVersion`
+  - `minecraft`：这个版本实际对应的原版
+  - `base`：加载器版本依赖的原版入口 id（父核心）
+  - `core`：入口引用的隐藏核心 id（原版入口默认等于自己，加载器默认等于 base）
+  - `complete` / `userInstalled` / `state` / `fresh`：同安装事务
+- 没有该文件 = 外部版本；外部版本不迁移核心文件，加载器需要它的文件时只复制/硬链接到 cores，不改动外部目录。
+- 旧字段 `managed` / `user` / `kind` 只在迁移时读取一次；新写入一律显式字段。
+- rml.json 只能通过 `JsonArena::Open(path)` 借用代理读写；禁止直接 `ifstream` 或 `Json::Parse` 这个文件。
+- Mod 仓库元数据集中在 `<game>/mods/rml.json`；旧的 `<jar>.rml.json` 首次读取时合并后删除。
+- **核心不可变**：启动/修复/重装不得就地改写已存在的核心文件。内容不一致时生成新 id：`<core>-cov-<内容 sha1 前 8 位>`，入口 rml 指向新核心；旧核心继续保留给其它入口。
+- **迁移纪律**：`Directory::MigrateCores` 先 dry-run，正式执行前备份入口 rml 并把每条文件操作写入 `cores/.migration/<时间戳>/journal.log`（WAL），再 rename/硬链接；失败自动按日志反向回滚，日志和备份保留现场；`RollbackLastMigration` 可手动回滚最近一次。迁移前必须确认游戏/服务端未运行，只允许搬 `<id>.json`/`<id>.jar`/`<id>-natives`，绝不碰 saves/mods/levels.dat。
+- **引用与 GC**：`CoreEntry::refs` = 引用核心的 versions 入口（含服务端安装）；`Catalog::Installation::refs` = 服务端实例引用数。删除入口只删入口，不自动删核心；核心无引用时只作为 GC 候选，必须显式 `RemoveCore`/`RemoveOrphanCores`。有引用的核心删除请求必须回中文错误。
+- 安装事务：开始写 `state: "installing"`、`complete: false`；成功提交 `committed`；失败由代理整目录删除（默认不保留 `failed`）；进程崩溃后由 `Directory::RecoverTransactions()` 清理所有非 `committed` 残留（只扫 versions，不碰 cores）。
+- 安装新版本：先建事务并写 json → 再拉 client/libraries/assets → 最后解压 natives（老版本）→ 提交事务 → 调 `MigrateCores` 把核心文件搬进 cores。
+
 
 ## 8. 数据目录
 
 - 所有运行数据在 `%APPDATA%\RML\`
   - `settings.json`：gameDir / selectedVersion / username / memoryMb / gc / jvmArgs
   - `sources.json`：软件源记录（mojang / assets / forge / neoforge / fabric），删除该文件即恢复默认
-  - `servers.json`：服务端实例（名称、目录、安装 id、端口、内存、玩法参数、pid）
+  - `servers.json`：旧服务端实例清单，只作为导入源/可选 pid 缓存；首次迁移前备份为 `servers.json.legacy.bak`，原文件不改写
+  - `server-runstate.json`：服务端 pid 运行状态缓存，不写进实例 manifest
   - `background.png`：用户自定义背景（设置页选择图片后复制到这里）
   - `runtimes/`：RML 自己装的 Java
   - `curseforge.key`：CurseForge API key（没有则禁用该源）
   - `logs/rml-debug.log`：仅 debug 构建
+- 服务端实例 manifest 在 `<game>/servers/<dir>/rml.json`，不是 APPDATA；pid 每秒只更新 `server-runstate.json`。
 - 不接受命令行参数传数据路径
 
 ## 9. Git
@@ -184,8 +211,11 @@ class Fabric  : public Flow<Fabric>  { ... };
   其余在 `net/neoforged/neoforge`（`21.1.x` / `26.1.2.x` 这类版本号）
 - Forge / NeoForge 的安装器和依赖来自 `maven.minecraftforge.net`、`maven.neoforged.net`，
   可以在设置页改成自定义 maven 根；源不通时安装会明确报下载失败
-- 服务端只支持原版与 Fabric：原版下载 Mojang `server.jar`；Fabric 用 meta 的 `/server/json`
-  装原版 server.jar + loader 依赖，首次启动在实例目录生成 `.fabric/remappedJars`（需要可写）
+- 服务端支持原版、Fabric 与 Forge：原版下载 Mojang `server.jar`；Fabric 用 meta 的 `/server/json`
+  装原版 server.jar + loader 依赖；Forge 用官方安装器的 `--installServer`，生成 `win_args.txt` 或老版本 universal jar。
+- 服务器页的“服务端”按钮管理的是服务端**安装**（versions/<id>），不是服务器实例；仍有实例引用时会拒绝删除，只删安装入口、保留核心。
+- 服务端实例以 `<game>/servers/<dir>/rml.json` 为准；旧 `servers.json` 首次读取时备份并导入，断链/非法记录留在备份里不删。
+- 服务端安装也写 `core`（= minecraft）；启动服务端只用入口里的 `server.jar`/`win_args.txt`，不依赖客户端核心。
 - 新实例默认 `online-mode=false`（启动器目前用离线账号）；正版验证在服务器页“详细信息”里改。
   启动时会按实例配置重写受管键（端口/玩法/难度/人数/online-mode），其余键保留
 - 服务端日志在实例目录 `logs/console.log`，控制台只读尾部；优雅停止靠 stdin `stop`，
@@ -203,6 +233,8 @@ class Fabric  : public Flow<Fabric>  { ... };
 4. 只有 `namespace tools` 可以有自由函数，其余一律用类
 5. 受管对象用继承表达
 6. 管理器用组合表达
+
+补充第 7 条：**机制和策略必须合并，对外只提供意图**。调用者只借用代理并表达编辑意图；分配器保证同一个资源指向同一个代理；原子性隐藏在代理内部。详见 §21。
 
 补充：`app/` 放主体与模块，`json/` 只放默认值文件（不是解析器），模块不允许直接挂在 `src/` 下。
 
@@ -266,3 +298,30 @@ class Fabric  : public Flow<Fabric>  { ... };
 - 不要宣称"已修复"。没在用户环境验证过，就说明没验证
 - 交付前必须跑 `mingw32-make -j12 deploy` 并给出真实退出码
 - 遇到困难或做不下去，直接说，不要用半成品交差
+
+## 21. 资源代理与原子性（机制与策略合一）
+
+**纪律：机制和策略必须合并，对外只提供意图。**
+
+- 调用者不直接打开、解析、写 JSON 文件，也不自己加锁、建临时文件、rename、校验或回滚；它只表达“打开哪个资源、改哪些键”的意图。
+- `open(path)` 返回的是**借来的代理**，不是文件句柄，也不是可以长期持有的对象。离开作用域必须归还；不能把代理本身或 `operator[]` 返回的引用保存到作用域外。
+- 分配器负责把路径规范化（分隔符、大小写、绝对路径），并保证**同一个 `rml.json` 的所有编辑指向同一个代理对象**。如果两个调用者拿到两个副本，锁、事务和原子提交就失效了。
+- 原子性（独占写、变更日志、临时文件 + 原子替换、失败回滚、跨进程锁、崩溃恢复）全部隐藏在代理内部。调用方只看到 `operator[]` / `Get` / `create` / `remove`；提交/回滚是代理的职责，不是调用方的编排工作。
+- `operator[]` 是写入口；只读请用 `Get` 或 `const JsonProxy&`，避免读取时在文档里创建 `null` 键。
+- 领域 schema 校验（例如 rml 的 role/base/state 组合）由读取方在代理作用域内完成；代理负责的是文件级原子性，不是业务字段合法性。
+- 如果接口提供 `commit()`，它也只是“现在提交”的意图，不是让调用方去管临时文件、锁或 rename；代理仍要自己保证提交的原子性和失败回滚。
+- **不要**把机制和策略拆成需要调用方自己组合的多个对外类型。可以内部分层，但对外只暴露借来的代理和少量意图方法。
+- 多文件操作必须由分配器/代理提供更高层事务；单个文件代理只保证这个文件的原子性，不能假装保证跨文件原子。
+- 这一条同样约束 JSON 以外的共享资源：谁申请谁借用，分配器保证同一资源同一对象，机制不泄漏给调用方。
+
+调用者看到的只有意图：
+
+```cpp
+auto j = allocator.Open("versions/1.21.1/rml.json");  // 借来的代理
+j["state"] = "committed";
+j.create("name");
+j.remove("legacyField");
+// 离开作用域：代理自己完成锁释放、提交或回滚
+```
+
+分配器内部可以分文档对象、租约、变更日志、校验器，但这些都不出现在调用方。

@@ -90,11 +90,12 @@ GlassPanel {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 18
+        anchors.margins: 20
         spacing: 10
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 40
             spacing: 8
 
             Text {
@@ -115,6 +116,12 @@ GlassPanel {
                 primary: true
                 onClicked: addSourceDialog.open()
             }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
         }
 
         Text {

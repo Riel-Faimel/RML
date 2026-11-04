@@ -95,6 +95,7 @@ GlassPanel {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 44
             spacing: 8
 
             ColumnLayout {
@@ -145,7 +146,7 @@ GlassPanel {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: Theme.border
+            color: Theme.divider
         }
 
         RowLayout {

@@ -10,14 +10,26 @@ GlassPanel {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
+        anchors.margins: 20
         spacing: 10
 
-        Text {
-            text: qsTr("Java 运行时")
-            font.pixelSize: 20
-            font.bold: true
-            color: Theme.text
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+
+            Text {
+                text: qsTr("Java 运行时")
+                font.pixelSize: 20
+                font.bold: true
+                color: Theme.text
+                Layout.fillWidth: true
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
         }
 
         ListView {
@@ -31,21 +43,37 @@ GlassPanel {
 
             delegate: Rectangle {
                 width: ListView.view.width
-                height: 38
+                height: 42
                 radius: Theme.radiusSmall
                 color: Theme.glassFill
                 border.width: 1
                 border.color: Theme.glassBorder
 
-                Text {
+                RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    verticalAlignment: Text.AlignVCenter
-                    text: modelData
-                    elide: Text.ElideMiddle
-                    font.pixelSize: 13
-                    color: Theme.text
+                    anchors.rightMargin: 8
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        verticalAlignment: Text.AlignVCenter
+                        text: modelData
+                        elide: Text.ElideMiddle
+                        font.pixelSize: 13
+                        color: Theme.text
+                    }
+
+                    SoftButton {
+                        text: qsTr("卸载")
+                        textSize: 11
+                        implicitWidth: 56
+                        implicitHeight: 28
+                        visible: bridge.canUninstallJava(index)
+                        enabled: !bridge.busy
+                        onClicked: bridge.uninstallJava(index)
+                    }
                 }
             }
 

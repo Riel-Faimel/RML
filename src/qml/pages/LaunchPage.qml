@@ -19,7 +19,7 @@ Item {
 
         Text {
             Layout.fillWidth: true
-            text: qsTr("确定删除「%1」？版本目录会被永久删除。").arg(page.pendingDelete >= 0 ? bridge.versions[page.pendingDelete] : "")
+            text: qsTr("确定删除「%1」？只删除版本入口，存档/模组随入口一起删除；共享核心会保留，可在设置页清理。").arg(page.pendingDelete >= 0 ? bridge.versions[page.pendingDelete] : "")
             wrapMode: Text.WrapAnywhere
             color: Theme.text
             font.pixelSize: 13
@@ -56,7 +56,8 @@ Item {
 
         VersionPanel {
             backdrop: page.backdrop
-            Layout.preferredWidth: 280
+            Layout.preferredWidth: Theme.sidebarWidth
+            Layout.maximumWidth: Theme.sidebarWidth
             Layout.fillHeight: true
 
             onRenameRequested: function(index, name) {

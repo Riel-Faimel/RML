@@ -14,9 +14,6 @@ class Version {
 public:
     explicit Version(const launch::Version& version) : version_(version) {}
 
-    // 只算缺什么，不发请求
-    bool Inspect(std::vector<std::string>& missing, std::string& error) const;
-
     // 缺什么下什么；已有且校验通过的直接跳过
     // apply_defaults：新装一个版本时为 true（会写 options.txt 默认中文），补齐时为 false
     // assets_root：资源对象根地址（软件源可配），默认 Mojang 官方
@@ -28,18 +25,12 @@ public:
     static bool WriteVersionJson(const std::string& game_dir, const std::string& id,
                                  const std::string& json, std::string& error);
 
-    // 装完之后写默认设置：目前只有语言 -> 简体中文
-    static void ApplyDefaults(const std::string& game_dir);
-
-    // 写托管标记 rml.json：complete=false 表示装到一半。
-    // write_user=true 时写入 user 标记，区分“用户自己装的原版”和 Forge 依赖的底座。
-    static bool WriteMarker(const std::string& game_dir, const std::string& id,
-                            const std::string& loader, bool complete,
-                            bool user_installed = false, bool write_user = false);
+    // 装完之后写默认设置：目前只有语言 -> 简体中文（写到版本自己的 gameDir）
+    static void ApplyDefaults(const std::string& instance_dir);
 
 private:
-    bool BuildCoreTasks(const launch::Version::Detail& detail,
-                        std::vector<Transfer::Task>& out, std::string& error) const;
+    void BuildCoreTasks(const launch::Version::Detail& detail,
+                        std::vector<Transfer::Task>& out) const;
     bool BuildAssetTasks(const launch::Version::Detail& detail, const std::string& assets_root,
                          std::vector<Transfer::Task>& out, std::string& error) const;
     bool ExtractNatives(const launch::Version::Detail& detail, std::string& error) const;

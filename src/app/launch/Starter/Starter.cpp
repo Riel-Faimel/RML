@@ -176,7 +176,14 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
         }
     }
 
-    const std::string natives_dir = paths.NativesDir(version_.Selected());
+    // 核心文件在 cores；迁移过程中入口里可能还留着 natives，作为回退。
+    const std::string core_id = version_.SelectedCore();
+    const std::string core_natives = paths.CoreNatives(core_id);
+    const std::string entry_natives = paths.NativesDir(version_.Selected());
+    const bool core_ready = tools::IsDirectory(core_natives) && !tools::ListFiles(core_natives).empty();
+    const bool entry_ready =
+        tools::IsDirectory(entry_natives) && !tools::ListFiles(entry_natives).empty();
+    std::string natives_dir = core_ready ? core_natives : (entry_ready ? entry_natives : core_natives);
     if (needs_natives) {
         const bool ready = tools::IsDirectory(natives_dir) && !tools::ListFiles(natives_dir).empty();
         if (!ready) missing.push_back({"natives 未解压", natives_dir});
@@ -215,7 +222,7 @@ bool Starter::Build(const AccountProvider::Credentials& credentials, const Optio
     if (!detail.client_jar.empty() && tools::PathExists(detail.client_jar)) {
         classpath.push_back(detail.client_jar);
     } else {
-        missing.push_back({"缺少客户端 jar", paths.VersionJar(version_.Selected())});
+        missing.push_back({"缺少客户端 jar", paths.CoreJar(version_.SelectedCore())});
     }
 
     if (!missing.empty()) {

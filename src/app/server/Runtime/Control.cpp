@@ -10,6 +10,55 @@
 namespace server {
 namespace runtime {
 
+namespace {
+
+// Forge 的 win_args.txt 用相对安装目录的 libraries/...；实例目录不同，需要改写成绝对路径。
+bool RewriteForgeArgs(const std::string& source, const std::string& install_dir,
+                      const std::string& dest, std::string& error) {
+    std::ifstream in(tools::ToPath(source), std::ios::binary);
+    if (!in) {
+        error = "读不到 Forge 参数文件: " + source;
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    std::string rewritten;
+    const std::string needle = "libraries/";
+    size_t begin = 0;
+    while (true) {
+        const size_t pos = text.find(needle, begin);
+        if (pos == std::string::npos) {
+            rewritten.append(text, begin, std::string::npos);
+            break;
+        }
+        rewritten.append(text, begin, pos - begin);
+        rewritten += tools::JoinPath(install_dir, "libraries") + "/";
+        begin = pos + needle.size();
+    }
+
+    const size_t slash = dest.find_last_of('/');
+    if (slash != std::string::npos) {
+        std::string dir_error;
+        if (!tools::EnsureDir(dest.substr(0, slash), dir_error)) {
+            error = dir_error;
+            return false;
+        }
+    }
+    std::ofstream out(tools::ToPath(dest), std::ios::binary | std::ios::trunc);
+    if (!out) {
+        error = "写 Forge 参数文件失败: " + dest;
+        return false;
+    }
+    out.write(rewritten.data(), static_cast<std::streamsize>(rewritten.size()));
+    if (!out) {
+        error = "写 Forge 参数文件失败: " + dest;
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 bool Control::Sync(std::vector<Instance>& instances) {
     // 已经退出的 Runner 记下退出码，然后丢掉句柄；进程号留给下面按存活情况清理
     for (auto it = runners_.begin(); it != runners_.end();) {
@@ -69,10 +118,19 @@ std::string Control::Status(const Instance& instance) const {
 
 bool Control::Start(const Instance& instance, const Catalog::Installation& installation,
                     const std::string& java, const std::string& game_dir, std::string& error) {
+    const std::string instance_dir = Directory(game_dir).ServerDir(instance.dir);
+    const std::string install_dir = Directory(game_dir).VersionDir(installation.id);
+
     // 原版：java -jar server.jar；Fabric：java -cp <libraries>;<server.jar> <mainClass>
+    // Forge：java @<改写后的 win_args.txt>
     std::vector<std::string> args;
     args.push_back("-Xmx" + std::to_string(instance.memory_mb) + "M");
-    if (installation.main_class.empty()) {
+    if (!installation.arg_file.empty()) {
+        const std::string source = tools::JoinPath(install_dir, installation.arg_file);
+        const std::string dest = tools::JoinPath(instance_dir, "forge_args.txt");
+        if (!RewriteForgeArgs(source, install_dir, dest, error)) return false;
+        args.push_back("@" + dest);
+    } else if (installation.main_class.empty()) {
         args.push_back("-jar");
         args.push_back(installation.jar);
         args.push_back("nogui");
@@ -96,7 +154,6 @@ bool Control::Start(const Instance& instance, const Catalog::Installation& insta
         args.push_back("nogui");
     }
 
-    const std::string instance_dir = Directory(game_dir).ServerDir(instance.dir);
     const std::string log_dir = tools::JoinPath(instance_dir, "logs");
     std::string log_error;
     if (!tools::EnsureDir(log_dir, log_error)) {

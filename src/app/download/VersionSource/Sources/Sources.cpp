@@ -50,11 +50,6 @@ std::string Sources::DefaultUrl(const std::string& kind) {
     return item != nullptr ? item->url : std::string();
 }
 
-std::string Sources::DefaultName(const std::string& kind) {
-    const DefaultSource* item = FindDefault(kind);
-    return item != nullptr ? item->name : std::string();
-}
-
 void Sources::ResetDefaults() {
     records_.clear();
     for (const auto& item : kDefaults) {

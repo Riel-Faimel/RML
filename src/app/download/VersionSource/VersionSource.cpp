@@ -19,11 +19,4 @@ std::vector<ContentSource*> VersionSource::Sources() {
     return {&modrinth_, &curseforge_};
 }
 
-ContentSource* VersionSource::Source(const std::string& id) {
-    for (auto* source : Sources()) {
-        if (source->Id() == id) return source;
-    }
-    return nullptr;
-}
-
 }  // namespace download

@@ -11,7 +11,6 @@
 #include "app/server/Naming/Name.h"
 #include "app/server/Properties/Properties.h"
 #include "app/tools/tools.h"
-
 namespace {
 
 std::string TrimWhitespace(const std::string& text) {
@@ -41,8 +40,9 @@ void Server::Refresh() {
 void Server::SyncPids() {
     if (!runtime_.Sync(catalog_.Instances())) return;
 
+    // pid 只写独立运行状态缓存，不碰实例 manifest。
     std::string ignored;
-    catalog_.Save(ignored);
+    catalog_.SaveRunState(ignored);
 }
 
 const std::vector<server::Catalog::Installation>& Server::Installations() const {
@@ -89,11 +89,12 @@ bool Server::Create(const Server::CreateOptions& options, std::string& error) {
     instance.difficulty = options.difficulty;
     instance.max_players = options.max_players;
     instance.online_mode = options.online_mode;
+    instance.seed = options.seed;
 
     if (!EnsureFile(instance, error)) return false;
 
     catalog_.Instances().push_back(std::move(instance));
-    if (!catalog_.Save(error)) {
+    if (!catalog_.SaveInstance(catalog_.Instances().size() - 1, error)) {
         error = "保存服务器实例失败: " + error;
         return false;
     }
@@ -123,8 +124,8 @@ bool Server::Remove(int index, std::string& error) {
     runtime_.Forget(instance.dir);
     catalog_.Instances().erase(catalog_.Instances().begin() + index);
 
-    if (!catalog_.Save(error)) {
-        error = "保存服务器实例失败: " + error;
+    if (!catalog_.SaveRunState(error)) {
+        error = "保存服务器实例状态失败: " + error;
         return false;
     }
     return true;
@@ -169,8 +170,12 @@ bool Server::Rename(int index, const std::string& name, std::string& error) {
     instance.name = new_name;
     instance.dir = new_dir;
 
-    if (!catalog_.Save(error)) {
+    if (!catalog_.SaveInstance(static_cast<size_t>(index), error)) {
         error = "保存服务器实例失败: " + error;
+        return false;
+    }
+    if (!catalog_.SaveRunState(error)) {
+        error = "保存服务器实例状态失败: " + error;
         return false;
     }
     return true;
@@ -190,18 +195,16 @@ bool Server::Update(int index, int port, int memory_mb, const std::string& gamem
         error = "内存至少为 512 MB: " + std::to_string(memory_mb);
         return false;
     }
-
     server::Instance updated = catalog_.Instances()[index];
     updated.port = port;
     updated.memory_mb = memory_mb;
     updated.gamemode = gamemode;
     updated.difficulty = difficulty;
     updated.max_players = max_players;
-
     if (!server::properties::File::Write(game_dir_, updated, true, error)) return false;
 
     catalog_.Instances()[index] = std::move(updated);
-    if (!catalog_.Save(error)) {
+    if (!catalog_.SaveInstance(static_cast<size_t>(index), error)) {
         error = "保存服务器实例失败: " + error;
         return false;
     }
@@ -232,7 +235,7 @@ bool Server::SaveProperties(int index,
     }
 
     catalog_.Instances()[index] = std::move(updated);
-    if (!catalog_.Save(error)) {
+    if (!catalog_.SaveInstance(static_cast<size_t>(index), error)) {
         error = "保存服务器实例失败: " + error;
         return false;
     }
@@ -260,8 +263,18 @@ bool Server::Start(int index, std::string& error) {
         error = "找不到服务端安装: " + instance.installation + "（实例: " + instance.name + "）";
         return false;
     }
-    if (!tools::PathExists(installation->jar)) {
+    if (installation->jar.empty() && installation->arg_file.empty()) {
+        error = "服务端安装没有可用的启动文件: " + installation->id;
+        return false;
+    }
+    if (!installation->jar.empty() && !tools::PathExists(installation->jar)) {
         error = "服务端 jar 不存在: " + installation->jar;
+        return false;
+    }
+    if (!installation->arg_file.empty() &&
+        !tools::PathExists(tools::JoinPath(Directory(game_dir_).VersionDir(installation->id),
+                                           installation->arg_file))) {
+        error = "服务端参数文件不存在: " + installation->arg_file;
         return false;
     }
 
@@ -273,7 +286,7 @@ bool Server::Start(int index, std::string& error) {
     if (!runtime_.Start(instance, *installation, java, game_dir_, error)) return false;
 
     catalog_.Instances()[index].pid = runtime_.Pid(catalog_.Instances()[index]);
-    if (!catalog_.Save(error)) {
+    if (!catalog_.SaveRunState(error)) {
         error = "服务器已启动，但保存实例状态失败: " + error;
         return false;
     }
@@ -295,7 +308,7 @@ bool Server::Stop(int index, bool force, std::string& error) {
     // 强制停止后进程号立刻失效；优雅停止要等进程自己退出，pid 由 SyncPids 清理
     if (force) {
         catalog_.Instances()[index].pid = 0;
-        if (!catalog_.Save(error)) {
+        if (!catalog_.SaveRunState(error)) {
             error = "服务器已停止，但保存实例状态失败: " + error;
             return false;
         }

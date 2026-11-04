@@ -13,22 +13,25 @@ GlassPanel {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 24
         spacing: 10
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 40
             Text {
                 text: qsTr("版本")
-                font.pixelSize: 13
-                color: Theme.textSecondary
+                font.pixelSize: 20
+                font.bold: true
+                color: Theme.text
                 Layout.fillWidth: true
             }
-            Text {
-                text: bridge.versions.length
-                font.pixelSize: 13
-                color: Theme.textSecondary
-            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
         }
 
         ListView {

@@ -38,14 +38,13 @@ public:
     void Cancel() const { cancel_.store(true, std::memory_order_relaxed); }
     void ResetCancel() const { cancel_.store(false, std::memory_order_relaxed); }
 
-    // 单独校验一个文件，供“只检查不下载”用
-    static bool Verify(const std::string& path, const std::string& sha1);
-
     // 安装流程的下载批次交给任务模块；自动补全传 nullptr。
     void SetNetTask(NetTask* task_manager) { task_manager_ = task_manager; }
     NetTask* task_manager() const { return task_manager_; }
 
 private:
+    static bool Verify(const std::string& path, const std::string& sha1);
+
     mutable std::atomic<bool> cancel_{false};
     NetTask* task_manager_ = nullptr;
 };

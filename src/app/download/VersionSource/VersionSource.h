@@ -32,7 +32,6 @@ public:
 
     // 内容源（Modrinth / CurseForge）
     std::vector<ContentSource*> Sources();
-    ContentSource* Source(const std::string& id);
 
 private:
     versionsource::Sources sources_;

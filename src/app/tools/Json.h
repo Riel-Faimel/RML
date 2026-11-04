@@ -35,14 +35,15 @@ public:
 
         bool AsBool(bool fallback = false) const;
         int64_t AsInt(int64_t fallback = 0) const;
-        double AsDouble(double fallback = 0.0) const;
         const std::string& AsString() const;
 
         size_t Size() const;
         const Value& At(size_t index) const;
         const std::string& KeyAt(size_t index) const;
         const Value& operator[](std::string_view key) const;
+        Value& operator[](std::string_view key);
         const Value* Find(std::string_view key) const;
+        bool Remove(std::string_view key);
 
         Value& Push(Value value);
         Value& Set(std::string key, Value value);

@@ -1,4 +1,5 @@
 #include "app/directory/Directory.h"
+#include "app/json/JsonArena.h"
 #include "app/launch/Version/Version.h"
 
 #include <algorithm>
@@ -36,7 +37,10 @@ Json::Value MergeArguments(const Json::Value& parent, const Json::Value& child) 
 
 }  // namespace
 
-Version::Version(std::string game_dir) : paths_(std::move(game_dir)) { Refresh(); }
+Version::Version(std::string game_dir) : paths_(std::move(game_dir)) {
+    paths_.RecoverTransactions();
+    Refresh();
+}
 
 std::string Version::VersionDir(const std::string& id) const { return paths_.VersionDir(id); }
 
@@ -66,14 +70,39 @@ bool Version::Rename(const std::string& id, const std::string& name) {
     if (!tools::IsDirectory(dir)) return false;
 
     const std::string marker_path = tools::JoinPath(dir, "rml.json");
-    Json::Value root = Json::Value::Object();
-    Json json;
-    std::string error;
-    const std::string existing = Directory::ReadTextFile(marker_path);
-    if (!existing.empty() && !json.Parse(existing, root, error)) return false;
+    {
+        auto j = JsonArena::Instance().Open(marker_path);
+        if (!j) return false;
 
-    root.Set("name", Json::Value::String(name));
-    if (!Directory::WriteTextFile(marker_path, root.Dump())) return false;
+        if (!tools::PathExists(marker_path)) {
+            // 外部版本没有 rml.json；重命名时补一份 role=external 的清单，仍然只以 rml 为准。
+            Json::Value root;
+            Json json;
+            std::string parse_error;
+            if (!json.Parse(Directory::ReadTextFile(paths_.VersionJson(id)), root, parse_error)) {
+                return false;
+            }
+            std::string minecraft = root["inheritsFrom"].AsString();
+            if (minecraft.empty()) minecraft = id;
+            j["schema"] = Json::Value::Int(2);
+            j["id"] = Json::Value::String(id);
+            j["name"] = Json::Value::String(name);
+            j["role"] = Json::Value::String("external");
+            j["loader"] = Json::Value::String("");
+            j["loaderVersion"] = Json::Value::String("");
+            j["minecraft"] = Json::Value::String(minecraft);
+            j["base"] = Json::Value::String("");
+            j["complete"] = Json::Value::Bool(true);
+            j["userInstalled"] = Json::Value::Bool(true);
+            j["state"] = Json::Value::String("committed");
+            j["fresh"] = Json::Value::Bool(false);
+        } else {
+            j["name"] = Json::Value::String(name);
+        }
+
+        std::string error;
+        if (!j.commit(error)) return false;
+    }
 
     paths_.RefreshVersions();
     Select(id);
@@ -88,13 +117,29 @@ void Version::Refresh() {
     }
 }
 
+std::string Version::SelectedCore() const {
+    for (const auto& entry : paths_.VisibleVersions()) {
+        if (entry.id == selected_) return entry.core.empty() ? selected_ : entry.core;
+    }
+    return selected_;
+}
+
 bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, int depth) const {
     if (depth > 8) {
         error = "继承链过深: " + id;
         return false;
     }
 
-    const std::string json_path = paths_.VersionJson(id);
+    // 入口自己的版本描述可能已经物理归到 cores；先用 rml 里的 core 找。
+    const std::string core_id = paths_.CoreForEntry(id);
+
+    std::string json_path = paths_.VersionJson(id);
+    if (!tools::PathExists(json_path) && tools::PathExists(paths_.CoreJson(core_id))) {
+        json_path = paths_.CoreJson(core_id);
+    }
+    if (!tools::PathExists(json_path) && tools::PathExists(paths_.CoreJson(id))) {
+        json_path = paths_.CoreJson(id);
+    }
     const std::string text = Directory::ReadTextFile(json_path);
     if (text.empty()) {
         error = "读不到版本描述: " + json_path;
@@ -137,7 +182,13 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
     detail.legacy_arguments = root["minecraftArguments"].AsString();
 
     const std::string own_jar = paths_.VersionJar(id);
-    if (tools::PathExists(own_jar)) detail.client_jar = own_jar;
+    if (tools::PathExists(own_jar)) {
+        detail.client_jar = own_jar;
+    } else if (tools::PathExists(paths_.CoreJar(core_id))) {
+        detail.client_jar = paths_.CoreJar(core_id);
+    } else if (tools::PathExists(paths_.CoreJar(id))) {
+        detail.client_jar = paths_.CoreJar(id);
+    }
 
     const Json::Value& libraries = root["libraries"];
     for (size_t i = 0; i < libraries.Size(); ++i) {

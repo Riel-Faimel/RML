@@ -1,7 +1,7 @@
 #include "app/Bridge.h"
 
 #include <QMetaObject>
-#include <QVariantMap>
+#include <QUrl>
 
 #include <string>
 #include <thread>
@@ -13,30 +13,30 @@
 #include "app/tools/tools.h"
 #include "include/AccountProvider.h"
 
-Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* parent)
+Bridge::Bridge(Launch& launch, QString account_name, int memory_mb,
+               std::function<bool()> server_running, QObject* parent)
     : QObject(parent),
       launch_(launch),
       account_name_(std::move(account_name)),
+      server_running_(std::move(server_running)),
       memory_mb_(memory_mb),
-      versions_(launch),
-      tasks_(),
+      versions_(launch, this),
+      tasks_([this] { emit tasksChanged(); }),
       downloads_(
-          launch, tasks_, this, [this] { emit downloadChanged(); }, [this] { emit changed(); },
+          launch, tasks_.Sink(), this, [this] { emit downloadChanged(); },
+          [this] {
+              launch_.Versions().Refresh();
+              RefreshCoreSummary();
+              emit changed();
+          },
           [this](const std::string& id) { versions_.SelectInstalled(id); }) {
     connect(&status_timer_, &QTimer::timeout, this, &Bridge::RefreshStatus);
     status_timer_.start(1000);
-    connect(&task_timer_, &QTimer::timeout, this, &Bridge::RefreshTasks);
-    task_timer_.start(500);
 
-    launch_.Downloader().Installers().Transfers().SetNetTask(&tasks_);
-    launch_.Tools().SetNetTask(&tasks_);
+    launch_.Downloader().Installers().Transfers().SetNetTask(&tasks_.Sink());
+    launch_.Tools().SetNetTask(&tasks_.Sink());
+    RefreshCoreSummary();
 }
-
-QString Bridge::GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
-
-QString Bridge::BackgroundUrl() const { return BridgeBackground::Url(); }
-
-bool Bridge::HasCustomBackground() const { return BridgeBackground::Has(); }
 
 QVariantList Bridge::SourceRecords() const {
     return BridgeSourceRecords::Records(launch_.Downloader().Sources().Origins());
@@ -46,13 +46,7 @@ QVariantList Bridge::SourceKindOptions() const { return BridgeSourceRecords::Kin
 
 void Bridge::setBackground(const QString& path) {
     QString error;
-    if (!BridgeBackground::Set(path, error)) {
-        status_ = error;
-        emit changed();
-        return;
-    }
-
-    status_ = QStringLiteral("背景图已更新");
+    status_ = BridgeBackground::Set(path, error) ? QStringLiteral("背景图已更新") : error;
     emit changed();
 }
 
@@ -91,11 +85,9 @@ void Bridge::resetSources() {
 
 void Bridge::SaveSources() {
     QString error;
-    if (!BridgeSourceRecords::Save(launch_.Downloader().Sources().Origins(), error)) {
-        status_ = QStringLiteral("软件源保存失败：%1").arg(error);
-    } else {
-        status_ = QStringLiteral("软件源已保存");
-    }
+    status_ = BridgeSourceRecords::Save(launch_.Downloader().Sources().Origins(), error)
+                  ? QStringLiteral("软件源已保存")
+                  : QStringLiteral("软件源保存失败：%1").arg(error);
     emit sourcesChanged();
     emit changed();
 }
@@ -118,29 +110,23 @@ void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& 
     emit changed();
 }
 
-void Bridge::selectVersion(const QString& id) {
-    if (versions_.Select(id)) emit changed();
-}
-
-void Bridge::selectVersionAt(int index) {
-    if (versions_.SelectAt(index)) emit changed();
-}
-
-void Bridge::openVersionFolderAt(int index) { versions_.OpenFolderAt(index); }
-
-void Bridge::deleteVersionAt(int index) {
-    versions_.DeleteAt(index);
-    emit changed();
-}
-
 void Bridge::renameVersionAt(int index, const QString& name) {
     versions_.RenameAt(index, name);
     emit changed();
 }
 
-void Bridge::selectJava(int index) {
-    versions_.SelectJava(index);
-    emit changed();
+bool Bridge::importMod(const QString& source, const QString& gameVersion, const QString& loader,
+                       const QString& modVersion) {
+    QString local = source;
+    const QUrl url(source);
+    if (url.isLocalFile()) local = url.toLocalFile();
+
+    QString message;
+    const bool ok = mods_.Import(launch_.Versions().GameDir(), local.toStdString(),
+                                 gameVersion.trimmed().toStdString(), loader.toStdString(),
+                                 modVersion.trimmed().toStdString(), message);
+    downloads_.SetStatus(message);
+    return ok;
 }
 
 void Bridge::installJava(int major) {
@@ -150,24 +136,30 @@ void Bridge::installJava(int major) {
     status_ = QStringLiteral("正在下载并安装 Java %1…").arg(major);
     emit changed();
 
-    std::thread([this, major] {
-        std::string error;
-        const bool ok = launch_.Tools().Install(major, error);
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, error, major] {
-                if (ok) {
-                    versions_.RefreshJavas();
-                    versions_.UpdateDetails();
-                    status_ = QStringLiteral("Java %1 已安装到 RML 的运行时目录").arg(major);
-                } else {
-                    status_ = QStringLiteral("安装失败：%1").arg(QString::fromStdString(error));
-                }
-                busy_ = false;
-                emit changed();
-            },
-            Qt::QueuedConnection);
-    }).detach();
+    versions_.InstallJava(major, [this, major](bool ok, const QString& error) {
+        if (ok) {
+            versions_.RefreshJavas();
+            versions_.UpdateDetails();
+            status_ = QStringLiteral("Java %1 已安装到 RML 的运行时目录").arg(major);
+        } else {
+            status_ = QStringLiteral("安装失败：%1").arg(error);
+        }
+        busy_ = false;
+        emit changed();
+    });
+}
+
+bool Bridge::canUninstallJava(int index) const { return versions_.CanUninstallJava(index); }
+
+void Bridge::uninstallJava(int index) {
+    if (busy_) return;
+    busy_ = true;
+    std::string error;
+    const bool ok = versions_.UninstallJava(index, error);
+    status_ = ok ? QStringLiteral("Java 已卸载")
+                 : QStringLiteral("卸载失败：%1").arg(QString::fromStdString(error));
+    busy_ = false;
+    emit changed();
 }
 
 void Bridge::launchGame() {
@@ -178,16 +170,12 @@ void Bridge::launchGame() {
     const std::string content_loader = versions_.SelectedContentLoader();
     const Directory::VersionEntry* entry = versions_.SelectedEntry();
     if (!content_loader.empty() && entry != nullptr) {
-        // 有加载器的版本使用独立 gameDir，Forge/Fabric 才会加载 versions/<id>/mods
+        // 加载器从 versions/<id>/mods 读模组；saves 也在这个版本目录下
         if (!paths.EnsureInstalledModsRoot(entry->id, mods_error)) {
             status_ = QString::fromStdString(mods_error);
             emit changed();
             return;
         }
-    } else if (!paths.EnsureModsRoot(mods_error)) {
-        status_ = QString::fromStdString(mods_error);
-        emit changed();
-        return;
     }
 
     repair_failed_ = false;
@@ -207,7 +195,7 @@ void Bridge::launchGame() {
     options.java_path = versions_.JavaPathOverride().toStdString();
     options.gc = gc_mode_.toStdString();
     options.jvm_args = jvm_args_.toStdString();
-    if (!content_loader.empty() && entry != nullptr) {
+    if (entry != nullptr) {
         options.game_dir = paths.InstalledGameRoot(entry->id);
     }
     launch::Starter::Command command;
@@ -343,36 +331,19 @@ void Bridge::cancelLaunchRepair() {
     emit changed();
 }
 
-void Bridge::loadGameVersions() { downloads_.LoadGameVersions(); }
-
-void Bridge::installGame(int kind, int index, const QString& loader) {
-    downloads_.InstallGame(kind, index, loader);
-}
-
-void Bridge::installGameWithLoader(int kind, int index, const QString& loader,
-                                   const QString& loaderVersion) {
-    downloads_.InstallGame(kind, index, loader, loaderVersion);
-}
-
-void Bridge::loadLoaderVersions(const QString& mcVersion, const QString& loader) {
-    downloads_.LoadLoaderVersions(mcVersion, loader);
-}
-
-void Bridge::installServer(int kind, int index, const QString& loader) {
-    downloads_.InstallServer(kind, index, loader);
-}
-
 void Bridge::searchContent(const QString& query, const QString& kind) {
     downloads_.SearchContent(query, kind, versions_.SelectedMinecraftVersion(),
                              versions_.SelectedContentLoader());
 }
 
 void Bridge::installContent(int index) {
+    const Directory::VersionEntry* entry = versions_.SelectedEntry();
+    const std::string game_root = launch_.Versions().GameDir();
+    const std::string instance_dir =
+        entry == nullptr ? game_root : Directory(game_root).InstalledGameRoot(entry->id);
     downloads_.InstallContent(index, versions_.SelectedMinecraftVersion(),
-                              versions_.SelectedContentLoader(), launch_.Versions().GameDir());
+                              versions_.SelectedContentLoader(), game_root, instance_dir);
 }
-
-void Bridge::selectContentSource(int index) { downloads_.SelectSource(index); }
 
 QVariantList Bridge::installedMods() {
     const Directory::VersionEntry* entry = versions_.SelectedEntry();
@@ -391,10 +362,8 @@ bool Bridge::installRepositoryMod(int index) {
     if (entry == nullptr) return false;
 
     QString message;
-    const bool ok = mods_.Install(launch_.Versions().GameDir(), *entry, index, message);
-    if (message.isEmpty()) return false;
-    downloads_.SetStatus(message);
-    return ok;
+    return ApplyModResult(mods_.Install(launch_.Versions().GameDir(), *entry, index, message),
+                          message);
 }
 
 bool Bridge::removeInstalledMod(int index) {
@@ -402,42 +371,20 @@ bool Bridge::removeInstalledMod(int index) {
     if (entry == nullptr) return false;
 
     QString message;
-    const bool ok = mods_.Remove(launch_.Versions().GameDir(), *entry, index, message);
+    return ApplyModResult(mods_.Remove(launch_.Versions().GameDir(), *entry, index, message),
+                          message);
+}
+
+bool Bridge::ApplyModResult(bool ok, const QString& message) {
     if (message.isEmpty()) return false;
     downloads_.SetStatus(message);
     return ok;
 }
 
-QVariantList Bridge::Tasks() const {
-    QVariantList out;
-    for (const auto& task : tasks_.Snapshots()) {
-        QVariantMap item;
-        item["id"] = static_cast<qulonglong>(task.id);
-        item["title"] = QString::fromStdString(task.title);
-        item["stage"] = QString::fromStdString(task.stage);
-        item["status"] = QString::fromStdString(task.status);
-        item["error"] = QString::fromStdString(task.error);
-        item["progress"] = task.progress;
-        item["bytes"] = static_cast<qlonglong>(task.bytes);
-        item["total"] = static_cast<qlonglong>(task.total);
-        out.append(item);
-    }
-    return out;
-}
-
-int Bridge::ActiveTasks() const {
-    int count = 0;
-    for (const auto& task : tasks_.Snapshots()) {
-        if (task.status == "queued" || task.status == "running" || task.status == "paused") ++count;
-    }
-    return count;
-}
-
-void Bridge::pauseTask(qulonglong id) { tasks_.Pause(id); emit tasksChanged(); }
-void Bridge::resumeTask(qulonglong id) { tasks_.Resume(id); emit tasksChanged(); }
-void Bridge::cancelTask(qulonglong id) { tasks_.Cancel(id); emit tasksChanged(); }
-
-void Bridge::RefreshTasks() { emit tasksChanged(); }
+void Bridge::pauseTask(qulonglong id) { tasks_.Pause(id); }
+void Bridge::resumeTask(qulonglong id) { tasks_.Resume(id); }
+void Bridge::cancelTask(qulonglong id) { tasks_.Cancel(id); }
+void Bridge::retryTask(qulonglong id) { tasks_.Retry(id); }
 
 void Bridge::RefreshStatus() {
     // 只有本启动器确实拉起过游戏进程时才轮询退出码。

@@ -31,14 +31,19 @@ std::string Quote(const std::string& text) { return "%22" + UrlEncode(text) + "%
 
 }  // namespace
 
-bool Modrinth::Search(const std::string& query, const std::string& loader,
-                      const std::string& mc_version, std::vector<Project>& out,
-                      std::string& error) {
+bool Modrinth::Search(const std::string& query, const std::string& kind,
+                      const std::string& loader, const std::string& mc_version,
+                      std::vector<Project>& out, std::string& error) {
     std::string url = "https://api.modrinth.com/v2/search?limit=20&query=" + UrlEncode(query);
-    if (!loader.empty() || !mc_version.empty()) {
+    if (!kind.empty() || !loader.empty() || !mc_version.empty()) {
         std::string facets = "&facets=%5B";
         bool first = true;
+        if (!kind.empty()) {
+            facets += "%5B%22project_type%3A" + UrlEncode(kind) + "%22%5D";
+            first = false;
+        }
         if (!loader.empty()) {
+            if (!first) facets += ",";
             facets += "%5B%22categories%3A" + UrlEncode(loader) + "%22%5D";
             first = false;
         }
@@ -74,8 +79,6 @@ bool Modrinth::Search(const std::string& query, const std::string& loader,
         project.id = item["project_id"].AsString();
         project.slug = item["slug"].AsString();
         project.title = item["title"].AsString();
-        project.description = item["description"].AsString();
-        project.downloads = item["downloads"].AsInt(0);
         if (!project.id.empty()) out.push_back(std::move(project));
     }
     return true;
@@ -119,14 +122,6 @@ bool Modrinth::Versions(const std::string& project_id, const std::string& loader
         const Json::Value& loaders = item["loaders"];
         for (size_t k = 0; k < loaders.Size(); ++k) {
             version.loaders.push_back(loaders.At(k).AsString());
-        }
-        const Json::Value& dependencies = item["dependencies"];
-        for (size_t k = 0; k < dependencies.Size(); ++k) {
-            const Json::Value& dependency = dependencies.At(k);
-            if (dependency["dependency_type"].AsString() == "required") {
-                std::string dependent = dependency["project_id"].AsString();
-                if (!dependent.empty()) version.required_projects.push_back(std::move(dependent));
-            }
         }
         const Json::Value& files = item["files"];
         for (size_t k = 0; k < files.Size(); ++k) {

@@ -82,7 +82,7 @@ ApplicationWindow {
                 hoverEnabled: true
 
                 contentItem: Text {
-                    text: "⌄"
+                    text: "↓"
                     font.pixelSize: 22
                     color: taskButton.hovered || stack.currentIndex === 4 ? "#FFFFFF" : "#DDEAFF"
                     horizontalAlignment: Text.AlignHCenter

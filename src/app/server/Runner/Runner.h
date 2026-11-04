@@ -32,9 +32,6 @@ public:
     // 强制停止：TerminateProcess
     bool ForceStop(std::string& error);
 
-    // 放手：关句柄但不杀进程（启动器退出时用）
-    void Detach();
-
     static bool PidAlive(int pid);
     static bool KillPid(int pid, std::string& error);
 

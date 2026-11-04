@@ -19,6 +19,7 @@ public:
         std::string gamemode = "survival";
         std::string difficulty = "easy";
         int max_players = 20;
+        std::string seed;
         bool online_mode = false;
     };
 
@@ -32,6 +33,10 @@ public:
 
     bool Create(const CreateOptions& options, std::string& error);
     bool Remove(int index, std::string& error);
+    // 删除服务端安装（versions/<id>），不是服务器实例；仍有实例引用时拒绝。
+    bool RemoveInstallation(int index, std::string& error);
+    // 迁移/删除前检查：有没有服务端实例正在运行。
+    bool AnyRunning() const;
     bool Rename(int index, const std::string& name, std::string& error);
     bool Update(int index, int port, int memory_mb, const std::string& gamemode,
                 const std::string& difficulty, int max_players, std::string& error);
@@ -51,10 +56,11 @@ public:
     int Pid(int index) const;
     std::string Status(int index) const;
     std::string Console(int index, size_t max_bytes) const;
+    // 清理已退出进程的 pid，并把变化写进独立 run-state 缓存。
+    void SyncPids();
 
 private:
     bool EnsureFile(const server::Instance& instance, std::string& error);
-    void SyncPids();
     std::string JavaFor(const server::Instance& instance, std::string& error) const;
 
     std::string game_dir_;

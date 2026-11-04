@@ -31,8 +31,6 @@ public:
         std::string status;  // queued/running/paused/completed/failed/cancelled
         std::string error;
         double progress = 0.0;
-        int64_t bytes = 0;
-        int64_t total = 0;
     };
 
     using Done = std::function<void(bool ok, const std::string& error)>;
@@ -47,6 +45,7 @@ public:
     void Pause(Id id);
     void Resume(Id id);
     void Cancel(Id id);
+    void Retry(Id id);
 
     std::vector<Snapshot> Snapshots() const;
 
@@ -58,15 +57,14 @@ private:
         std::string status;
         std::string error;
         double progress = 0.0;
-        int64_t bytes = 0;
-        int64_t total = 0;
         bool paused = false;
         bool cancelled = false;
         std::vector<Resource> resources;
         Done done;
     };
 
-    void Run();
+    void Worker();
+    void Execute(Task& task);
     void WaitIfPaused(Task& task);
     bool DownloadOne(Task& task, const Resource& resource, std::string& error);
 
@@ -74,7 +72,7 @@ private:
     std::condition_variable cv_;
     std::queue<Id> queue_;
     std::deque<Task> tasks_;
-    std::thread worker_;
+    std::vector<std::thread> workers_;
     bool stopping_ = false;
     Id next_id_ = 1;
 };

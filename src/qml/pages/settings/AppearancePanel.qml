@@ -19,14 +19,26 @@ GlassPanel {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
+        anchors.margins: 20
         spacing: 10
 
-        Text {
-            text: qsTr("外观")
-            font.pixelSize: 20
-            font.bold: true
-            color: Theme.text
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+
+            Text {
+                text: qsTr("外观")
+                font.pixelSize: 20
+                font.bold: true
+                color: Theme.text
+                Layout.fillWidth: true
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
         }
 
         Text {

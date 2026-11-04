@@ -23,6 +23,9 @@ Item {
         confirmDelete.open()
     }
 
+    property int pendingRename: -1
+    property string pendingRenameName: ""
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: Theme.pagePadding
@@ -30,11 +33,21 @@ Item {
 
         InstancePanel {
             backdrop: page.backdrop
-            Layout.preferredWidth: 300
-            Layout.maximumWidth: 300
+            Layout.preferredWidth: Theme.sidebarWidth
+            Layout.maximumWidth: Theme.sidebarWidth
             Layout.fillHeight: true
 
             onAddRequested: createDialog.open()
+            onOpenFolderRequested: function(index) {
+                serverBridge.selectAt(index)
+                serverBridge.openFolder()
+            }
+            onRenameRequested: function(index, name) {
+                serverBridge.selectAt(index)
+                page.pendingRename = index
+                page.pendingRenameName = String(name)
+                renameDialog.open()
+            }
             onDeleteRequested: function(index, name) { page.deleteServerAt(index, name) }
         }
 
@@ -68,7 +81,8 @@ Item {
         width: 400
 
         onOpened: {
-            renameField.text = serverBridge.name
+            renameField.text = page.pendingRenameName.length > 0 ? page.pendingRenameName
+                                                                  : serverBridge.name
             renameField.forceActiveFocus()
             renameField.selectAll()
         }

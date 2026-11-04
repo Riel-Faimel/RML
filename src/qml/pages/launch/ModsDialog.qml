@@ -156,8 +156,8 @@ SoftDialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: model.compatible ? (model.version || qsTr("已下载")) : model.reason
-                    color: model.compatible ? Theme.textSecondary : Theme.danger
+                    text: model.version || qsTr("已下载")
+                    color: Theme.textSecondary
                     font.pixelSize: 10
                     elide: Text.ElideRight
                 }
@@ -165,10 +165,18 @@ SoftDialog {
 
             SoftButton {
                 text: qsTr("安装")
-                enabled: model.compatible
                 primary: true
                 onClicked: dialog.installRepoMod(index)
             }
         }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: dialog.repoMode
+        text: bridge.downloadStatus
+        color: Theme.textSecondary
+        font.pixelSize: 11
+        wrapMode: Text.WordWrap
     }
 }

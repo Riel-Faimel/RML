@@ -3,7 +3,6 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
-#include <QStandardPaths>
 #include <QString>
 #include <QUrl>
 
@@ -15,7 +14,6 @@
 #include "app/launch/Launch.h"
 #include "app/server/Server.h"
 #include "app/tools/Json.h"
-#include "app/tools/tools.h"
 
 #ifdef RML_DEBUG
 #include <QDateTime>
@@ -132,10 +130,30 @@ int main(int argc, char** argv) {
         launch.Versions().Select(settings.selected_version);
     }
 
-    Bridge bridge(launch, QString::fromStdString(settings.username), settings.memory_mb);
-
     // 服务端模块独立于启动模块；服务器页用自己的桥
     Server server(settings.game_dir);
+
+    // 核心/入口分离迁移：只在游戏和服务端都没运行时做；失败保留日志和现场。
+    if (!launch.GameStarter().IsRunning() && !server.AnyRunning()) {
+        Directory maintenance(settings.game_dir);
+        Directory::MigrationReport report;
+        maintenance.MigrateCores(false, report);
+        if (!report.ok) {
+#ifdef RML_DEBUG
+            qWarning() << "核心迁移失败:" << QString::fromStdString(report.error);
+#endif
+        } else if (report.moved + report.dropped + report.markers + report.cores_created > 0) {
+            launch.Versions().Refresh();
+            server.Refresh();
+#ifdef RML_DEBUG
+            qInfo() << "核心迁移:" << QString::fromStdString(report.journal) << "移动" << report.moved
+                    << "去重" << report.dropped << "标记" << report.markers;
+#endif
+        }
+    }
+
+    Bridge bridge(launch, QString::fromStdString(settings.username), settings.memory_mb,
+                  [&server] { return server.AnyRunning(); });
     ServerBridge server_bridge(server);
 
 #ifdef RML_DEBUG

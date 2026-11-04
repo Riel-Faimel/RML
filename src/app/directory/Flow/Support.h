@@ -32,6 +32,10 @@ public:
     static bool EnsureVanillaJson(const Context& context, const std::string& mc_version,
                                   std::string& error);
 
+    // 安装器顺手创建的原版底座：显式写 role=base，不覆盖用户已有版本。
+    static bool WriteBaseMarker(const std::string& game_dir, const std::string& mc_version,
+                                std::string& error);
+
     // 确保 versions/<mc>/<mc>.jar 存在（Forge 的处理器要拿它当输入）
     static bool EnsureClientJar(const Context& context, const std::string& mc_version,
                                 const Progress& progress, std::string& error);
