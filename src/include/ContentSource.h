@@ -12,6 +12,8 @@ public:
         std::string id;
         std::string slug;
         std::string title;
+        std::string icon_url;
+        std::string description;
     };
 
     struct File {

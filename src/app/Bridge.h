@@ -36,6 +36,9 @@ class Bridge : public QObject {
     Q_PROPERTY(QVariantList sourceRecords READ SourceRecords NOTIFY sourcesChanged)
     Q_PROPERTY(QVariantList sourceKindOptions READ SourceKindOptions CONSTANT)
     Q_PROPERTY(QStringList contentResults READ ContentResults NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList contentNames READ ContentNames NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList contentIcons READ ContentIcons NOTIFY downloadChanged)
+    Q_PROPERTY(QStringList contentDescriptions READ ContentDescriptions NOTIFY downloadChanged)
     Q_PROPERTY(QString downloadStatus READ DownloadStatus NOTIFY downloadChanged)
     Q_PROPERTY(bool downloadBusy READ DownloadBusy NOTIFY downloadChanged)
     Q_PROPERTY(QStringList contentSources READ ContentSources NOTIFY downloadChanged)
@@ -81,6 +84,9 @@ public:
     QVariantList SourceRecords() const;
     QVariantList SourceKindOptions() const;
     QStringList ContentResults() const { return downloads_.ContentResults(); }
+    QStringList ContentNames() const { return downloads_.ContentNames(); }
+    QStringList ContentIcons() const { return downloads_.ContentIcons(); }
+    QStringList ContentDescriptions() const { return downloads_.ContentDescriptions(); }
     QString DownloadStatus() const { return downloads_.Status(); }
     bool DownloadBusy() const { return downloads_.Busy(); }
     QStringList ContentSources() const { return downloads_.ContentSources(); }

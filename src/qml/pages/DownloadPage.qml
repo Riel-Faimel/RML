@@ -235,108 +235,42 @@ Item {
                                                      : (page.versionKind === 1 ? bridge.snapshotVersions
                                                                                : bridge.aprilVersions))
 
-                    delegate: Rectangle {
-                        id: versionRow
-                        property string versionId: modelData
+                    delegate: Loader {
+                        id: rowLoader
                         width: ListView.view.width
-                        height: 46
-                        radius: Theme.radius
-                        color: Theme.glassFill
-                        border.width: 1
-                        border.color: Theme.glassBorder
+                        height: item ? item.height : 46
+                        sourceComponent: page.category === "version" ? versionRowComponent
+                                                                     : contentRowComponent
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 8
-                            spacing: 8
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData
-                                elide: Text.ElideRight
-                                font.pixelSize: 14
-                                color: Theme.text
-                            }
-
-                            // 加载器：默认原版，点开可切换
-                            Button {
-                                id: loaderButton
-                                visible: page.category === "version"
-                                text: page.loaderFor(versionRow.versionId)
-                                enabled: !bridge.downloadBusy
-                                implicitWidth: 84
-                                implicitHeight: 30
-                                padding: 0
-                                onClicked: loaderMenu.popup()
-
-                                contentItem: Text {
-                                    text: loaderButton.text
-                                    color: Theme.primary
-                                    font.pixelSize: 12
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    elide: Text.ElideRight
-                                }
-
-                                background: Rectangle {
-                                    radius: Theme.radiusSmall
-                                    color: loaderButton.hovered ? Theme.primarySoft : Theme.glassHoverFill
-                                    border.width: 1
-                                    border.color: Theme.primary
-                                }
-
-                                SoftMenu {
-                                    id: loaderMenu
-                                    y: loaderButton.height
-                                    width: 160
-
-                                    Repeater {
-                                        model: ["原版", "Fabric", "Forge", "NeoForge"]
-
-                                        delegate: SoftMenuItem {
-                                            text: modelData
-                                            onTriggered: page.chooseLoader(versionRow.versionId, modelData)
-                                        }
-                                    }
-                                }
-                            }
-
-                            SoftButton {
-                                text: qsTr("服务端")
-                                visible: page.category === "version"
-                                enabled: !bridge.downloadBusy
-                                implicitWidth: 68
-                                implicitHeight: 30
-                                textSize: 12
-                                onClicked: bridge.installServer(page.versionKind, index,
-                                                               page.loaderFor(versionRow.versionId))
-                            }
-
-                            Button {
-                                text: qsTr("安装")
-                                enabled: !bridge.downloadBusy
-                                implicitWidth: 76
-                                implicitHeight: 30
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: Theme.primaryText
-                                    font.pixelSize: 13
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: Theme.radiusSmall
-                                    color: parent.enabled ? Theme.primary : Theme.disabledFill
-                                }
-                                onClicked: page.category === "version"
-                                               ? page.installVersion(page.versionKind, index,
-                                                                    page.loaderFor(versionRow.versionId),
-                                                                    versionRow.versionId)
-                                               : bridge.installContent(index)
+                        onLoaded: {
+                            item.width = rowLoader.width
+                            item.index = index
+                            if (page.category === "version") {
+                                item.versionId = modelData
+                                item.loaderName = Qt.binding(function() {
+                                    return page.loaderFor(item.versionId)
+                                })
+                                item.installRequested.connect(function() {
+                                    page.installVersion(page.versionKind, index, item.loaderName,
+                                                        item.versionId)
+                                })
+                                item.serverRequested.connect(function() {
+                                    bridge.installServer(page.versionKind, index, item.loaderName)
+                                })
+                                item.loaderRequested.connect(function(loader) {
+                                    page.chooseLoader(item.versionId, loader)
+                                })
+                            } else {
+                                item.title = bridge.contentNames[index] || modelData
+                                item.iconUrl = bridge.contentIcons[index] || ""
+                                item.description = bridge.contentDescriptions[index] || ""
+                                item.installRequested.connect(function() {
+                                    bridge.installContent(index)
+                                })
                             }
                         }
                     }
+
 
                     Text {
                         anchors.centerIn: parent
@@ -366,6 +300,16 @@ Item {
                 }
             }
         }
+    }
+
+    Component {
+        id: versionRowComponent
+        VersionRow {}
+    }
+
+    Component {
+        id: contentRowComponent
+        ContentRow {}
     }
 
     LoaderSidebar {

@@ -74,19 +74,25 @@ void BridgeContent::Search(const QString& query, const QString& kind, const std:
         QStringList titles;
         QStringList names;
         QStringList ids;
+        QStringList icons;
+        QStringList descriptions;
         if (ok) {
             for (const auto& project : projects) {
                 titles << QStringLiteral("%1  ·  %2").arg(FromStd(project.title)).arg(FromStd(project.slug));
                 names << FromStd(project.title);
                 ids << FromStd(project.id);
+                icons << FromStd(project.icon_url);
+                descriptions << FromStd(project.description);
             }
         }
         QMetaObject::invokeMethod(
             context_,
-            [this, ok, titles, names, ids, error] {
+            [this, ok, titles, names, ids, icons, descriptions, error] {
                 results_ = titles;
                 names_ = names;
                 ids_ = ids;
+                icons_ = icons;
+                descriptions_ = descriptions;
                 state_.status = ok ? QStringLiteral("找到 %1 个结果").arg(titles.size())
                                    : QStringLiteral("搜索失败：%1").arg(FromStd(error));
                 state_.busy = false;
@@ -125,8 +131,10 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
     std::thread([this, project_id, project_name, kind, repo_dir, instance_dir, loader, mc_version] {
         std::vector<ContentSource::Version> versions;
         std::string error;
+        // 光影/材质包没有 Mod 加载器概念，不能把 Fabric/Forge 当 loader 过滤。
+        const std::string version_loader = kind == "mod" ? loader : std::string();
 
-        if (!SelectedSource()->Versions(project_id, loader, mc_version, versions, error)) {
+        if (!SelectedSource()->Versions(project_id, version_loader, mc_version, versions, error)) {
             QMetaObject::invokeMethod(
                 context_,
                 [this, error] {

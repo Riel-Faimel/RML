@@ -18,6 +18,8 @@ QtObject {
     readonly property color glassBorder: "#55FFFFFF"
     readonly property color glassHoverFill: "#88FFFFFF"
     readonly property color disabledFill: "#99FFFFFF"
+    readonly property color controlFill: "#E6FFFFFF"
+    readonly property color popupFill: "#F7F9FC"
     readonly property color divider: "#33808080"
 
     readonly property int radiusLarge: 16

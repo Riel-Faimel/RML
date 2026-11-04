@@ -47,7 +47,7 @@ GlassPanel {
                 width: ListView.view.width
                 height: 46
                 radius: Theme.radius
-                color: index === bridge.selectedIndex ? Theme.primarySoft : Theme.glassFill
+                color: index === bridge.selectedIndex ? Theme.controlFill : Theme.glassFill
                 border.width: 1
                 border.color: index === bridge.selectedIndex ? Theme.primary : Theme.glassBorder
 

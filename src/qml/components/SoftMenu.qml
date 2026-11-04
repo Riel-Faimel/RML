@@ -12,7 +12,7 @@ Menu {
     background: Rectangle {
         implicitWidth: 180
         radius: Theme.radiusSmall
-        color: "#F7F9FC"
+        color: Theme.popupFill
         border.width: 1
         border.color: Theme.border
     }

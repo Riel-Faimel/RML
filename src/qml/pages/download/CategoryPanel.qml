@@ -48,7 +48,7 @@ GlassPanel {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 radius: Theme.radius
-                color: root.category === modelData.key ? Theme.primarySoft : Theme.glassFill
+                color: root.category === modelData.key ? Theme.controlFill : Theme.glassFill
                 border.width: 1
                 border.color: root.category === modelData.key ? Theme.primary : Theme.glassBorder
 

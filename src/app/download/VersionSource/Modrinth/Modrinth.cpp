@@ -42,7 +42,7 @@ bool Modrinth::Search(const std::string& query, const std::string& kind,
             facets += "%5B%22project_type%3A" + UrlEncode(kind) + "%22%5D";
             first = false;
         }
-        if (!loader.empty()) {
+        if (!loader.empty() && kind == "mod") {
             if (!first) facets += ",";
             facets += "%5B%22categories%3A" + UrlEncode(loader) + "%22%5D";
             first = false;
@@ -79,6 +79,8 @@ bool Modrinth::Search(const std::string& query, const std::string& kind,
         project.id = item["project_id"].AsString();
         project.slug = item["slug"].AsString();
         project.title = item["title"].AsString();
+        project.icon_url = item["icon_url"].AsString();
+        project.description = item["description"].AsString();
         if (!project.id.empty()) out.push_back(std::move(project));
     }
     return true;

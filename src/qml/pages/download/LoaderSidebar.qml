@@ -82,7 +82,7 @@ Rectangle {
                 width: ListView.view.width
                 height: 38
                 radius: Theme.radiusSmall
-                color: modelData === root.selectedVersion ? Theme.primarySoft : Theme.glassFill
+                color: modelData === root.selectedVersion ? Theme.controlFill : Theme.glassFill
                 border.width: 1
                 border.color: modelData === root.selectedVersion ? Theme.primary : Theme.glassBorder
 

@@ -17,7 +17,7 @@ TextField {
 
     background: Rectangle {
         radius: Theme.radiusSmall
-        color: "#E6FFFFFF"
+        color: Theme.controlFill
         border.width: 1
         border.color: control.activeFocus ? Theme.primary : Theme.border
     }

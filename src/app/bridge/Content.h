@@ -21,6 +21,9 @@ public:
                   Notify download_changed);
 
     const QStringList& Results() const { return results_; }
+    const QStringList& Names() const { return names_; }
+    const QStringList& Icons() const { return icons_; }
+    const QStringList& Descriptions() const { return descriptions_; }
     const QStringList& Sources() const { return sources_; }
 
     void SelectSource(int index);
@@ -40,6 +43,8 @@ private:
 
     QStringList results_;
     QStringList names_;
+    QStringList icons_;
+    QStringList descriptions_;
     QStringList ids_;
     QStringList sources_;
     int source_index_ = 0;

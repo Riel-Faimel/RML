@@ -111,6 +111,10 @@ bool CurseForge::Search(const std::string& query, const std::string& kind,
         project.id = std::to_string(item["id"].AsInt(0));
         project.slug = item["slug"].AsString();
         project.title = item["name"].AsString();
+        const Json::Value& logo = item["logo"];
+        project.icon_url = logo["thumbnailUrl"].AsString();
+        if (project.icon_url.empty()) project.icon_url = logo["url"].AsString();
+        project.description = item["summary"].AsString();
         if (project.id != "0") out.push_back(std::move(project));
     }
     (void)mc_version;

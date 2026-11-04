@@ -25,6 +25,9 @@ public:
     ~BridgeDownloads();
 
     const QStringList& ContentResults() const { return content_.Results(); }
+    const QStringList& ContentNames() const { return content_.Names(); }
+    const QStringList& ContentIcons() const { return content_.Icons(); }
+    const QStringList& ContentDescriptions() const { return content_.Descriptions(); }
     QString Status() const { return state_.status; }
     bool Busy() const { return state_.busy; }
     const QStringList& ContentSources() const { return content_.Sources(); }
