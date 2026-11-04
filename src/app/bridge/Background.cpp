@@ -44,10 +44,10 @@ QString BridgeBackground::Url() {
 
     // 部署后优先用 exe 旁边的 qml/assets
     const QString local =
-        QCoreApplication::applicationDirPath() + QStringLiteral("/qml/assets/background.png");
+        QCoreApplication::applicationDirPath() + QStringLiteral("/qml/assets/background.jpg");
     if (QFile::exists(local)) return QUrl::fromLocalFile(local).toString();
 
-    return QUrl::fromLocalFile(QStringLiteral(RML_QML_DIR "/assets/background.png")).toString();
+    return QUrl::fromLocalFile(QStringLiteral(RML_QML_DIR "/assets/background.jpg")).toString();
 }
 
 bool BridgeBackground::Has() { return !CustomBackgroundFile().isEmpty(); }

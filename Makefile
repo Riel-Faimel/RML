@@ -10,6 +10,7 @@
 QT_DIR ?= D:/Qt/6.10.2/mingw_64
 CXX    ?= g++
 MOC    ?= $(QT_DIR)/bin/moc.exe
+WINDRES ?= windres
 CONFIG ?= debug
 BUILD  ?= build/$(CONFIG)
 
@@ -99,6 +100,7 @@ APP_SOURCES  := src/app/main.cpp src/app/Bridge.cpp src/app/Bridge.Maintenance.c
 CORE_OBJECTS := $(patsubst src/%.cpp,$(BUILD)/%.o,$(CORE_SOURCES))
 APP_OBJECTS  := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES)) \
                 $(BUILD)/moc_Bridge.o $(BUILD)/moc_ServerBridge.o
+RESOURCE_OBJECT := $(BUILD)/app_resource.o
 
 TARGET := $(BUILD)/rml.exe
 CHECK  := $(BUILD)/rml_check.exe
@@ -117,6 +119,10 @@ $(BUILD)/moc_ServerBridge.cpp: src/app/ServerBridge.h | $(BUILD)
 	@ echo   MOC  $<
 	@ $(MOC) $< -o $@
 
+$(RESOURCE_OBJECT): src/app/app.rc src/app/app.ico | $(BUILD)
+	@ echo   RC   src/app/app.rc
+	@ $(WINDRES) -I src/app -O coff $< -o $@
+
 $(BUILD)/%.o: src/%.cpp | $(BUILD)
 	@ if not exist "$(dir $@)" mkdir "$(dir $@)"
 	@ echo   CXX  $<
@@ -130,7 +136,7 @@ $(BUILD)/moc_ServerBridge.o: $(BUILD)/moc_ServerBridge.cpp | $(BUILD)
 	@ echo   CXX  $(BUILD)/moc_ServerBridge.cpp
 	@ $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(TARGET): $(CORE_OBJECTS) $(APP_OBJECTS)
+$(TARGET): $(CORE_OBJECTS) $(APP_OBJECTS) $(RESOURCE_OBJECT)
 	@ echo   LINK $@
 	@ $(CXX) $^ $(LDFLAGS) $(LDLIBS) -o $@
 
