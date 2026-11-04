@@ -15,8 +15,7 @@ namespace {
 
 QString FromStd(const std::string& text) { return QString::fromStdString(text); }
 
-bool ReadJsonFile(const std::string& path, Json::Value& out) {
-    const std::string text = tools::ReadTextFile(path);
+bool ParseJsonText(const std::string& text, Json::Value& out) {
     if (text.empty()) return false;
     Json json;
     std::string error;
@@ -69,7 +68,8 @@ QVariantList BridgeMods::Repository(const std::string& game_dir, const Directory
         info["reason"] = QStringLiteral("缺少版本描述，请重新下载");
 
         Json::Value meta;
-        if (ReadJsonFile(info["path"].toString().toStdString() + ".rml.json", meta)) {
+        std::string meta_text;
+        if (paths.ReadRepositoryModText(file, meta_text) && ParseJsonText(meta_text, meta)) {
             const QStringList game_versions = JsonStringList(meta["gameVersions"]);
             const QStringList loaders = JsonStringList(meta["loaders"]);
             const bool mc_ok = !mc_version.empty() && game_versions.contains(FromStd(mc_version));
@@ -96,11 +96,11 @@ QVariantList BridgeMods::Installed(const std::string& game_dir, const Directory:
 
     const Directory paths(game_dir);
     const std::string mods_dir = paths.InstalledModsRoot(entry.id);
-    const std::string manifest_path = paths.InstalledManifest(entry.id);
-
     std::vector<std::string> listed;
     Json::Value manifest;
-    if (ReadJsonFile(manifest_path, manifest) && manifest["mods"].IsArray()) {
+    std::string manifest_text;
+    if (paths.ReadVersionText(entry.id, "mods.json", manifest_text) &&
+        ParseJsonText(manifest_text, manifest) && manifest["mods"].IsArray()) {
         for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
             const Json::Value& item = manifest["mods"].At(i);
             const std::string file = item["file"].AsString();
@@ -179,7 +179,9 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
     }
 
     Json::Value manifest;
-    if (!ReadJsonFile(paths.InstalledManifest(entry.id), manifest)) {
+    std::string manifest_text;
+    if (!paths.ReadVersionText(entry.id, "mods.json", manifest_text) ||
+        !ParseJsonText(manifest_text, manifest)) {
         manifest = Json::Value::Object();
     }
     Json::Value mods = manifest["mods"].IsArray() ? manifest["mods"] : Json::Value::Array();
@@ -205,7 +207,7 @@ bool BridgeMods::Install(const std::string& game_dir, const Directory::VersionEn
     record.Set("loaders", loaders);
     next.Push(record);
     manifest.Set("mods", next);
-    if (!tools::WriteTextFile(paths.InstalledManifest(entry.id), manifest.Dump())) {
+    if (!paths.WriteVersionText(entry.id, "mods.json", manifest.Dump())) {
         message = QStringLiteral("写入版本 Mod 清单失败");
         return false;
     }
@@ -226,7 +228,9 @@ bool BridgeMods::Remove(const std::string& game_dir, const Directory::VersionEnt
                             ec);
 
     Json::Value manifest;
-    if (ReadJsonFile(paths.InstalledManifest(entry.id), manifest) && manifest["mods"].IsArray()) {
+    std::string manifest_text;
+    if (paths.ReadVersionText(entry.id, "mods.json", manifest_text) &&
+        ParseJsonText(manifest_text, manifest) && manifest["mods"].IsArray()) {
         Json::Value next = Json::Value::Array();
         for (size_t i = 0; i < manifest["mods"].Size(); ++i) {
             if (manifest["mods"].At(i)["file"].AsString() != file) {
@@ -234,7 +238,7 @@ bool BridgeMods::Remove(const std::string& game_dir, const Directory::VersionEnt
             }
         }
         manifest.Set("mods", next);
-        tools::WriteTextFile(paths.InstalledManifest(entry.id), manifest.Dump());
+        paths.WriteVersionText(entry.id, "mods.json", manifest.Dump());
     }
 
     message = QStringLiteral("已从版本移除：%1").arg(FromStd(file));

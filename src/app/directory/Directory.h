@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class Directory {
@@ -27,6 +28,25 @@ public:
 
     const std::string& GameRoot() const { return game_root_; }
     std::string GameFile(const std::string& name) const;
+
+    // .minecraft 根目录和版本目录的数据读写入口。
+    bool ReadGameText(const std::string& relative, std::string& out) const;
+    bool WriteGameText(const std::string& relative, std::string_view text) const;
+    bool ReadVersionText(const std::string& id, const std::string& relative,
+                         std::string& out) const;
+    bool WriteVersionText(const std::string& id, const std::string& relative,
+                          std::string_view text) const;
+    bool ReadRepositoryModText(const std::string& file, std::string& out) const;
+    bool WriteRepositoryModText(const std::string& file, std::string_view text) const;
+
+    // %APPDATA%\RML 数据文件。
+    static bool ReadDataFile(const std::string& name, std::string& out);
+    static bool WriteDataFile(const std::string& name, std::string_view text);
+
+    // 底层文本读写也由 Directory 收口；其他模块不再直接碰文件。
+    static std::string ReadTextFile(const std::string& path);
+    static bool ReadTextFile(const std::string& path, std::string& out);
+    static bool WriteTextFile(const std::string& path, std::string_view text);
 
     std::string VersionsRoot() const;
     std::string VersionDir(const std::string& id) const;

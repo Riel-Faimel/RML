@@ -105,8 +105,8 @@ std::string File::Build(const Instance& instance, const std::string& existing,
 bool File::Write(const std::string& game_dir, const Instance& instance, bool preserve_existing,
                  std::string& error) {
     const std::string path = Path(game_dir, instance);
-    const std::string existing = preserve_existing ? tools::ReadTextFile(path) : std::string();
-    if (!tools::WriteTextFile(path, Build(instance, existing, preserve_existing))) {
+    const std::string existing = preserve_existing ? Directory::ReadTextFile(path) : std::string();
+    if (!Directory::WriteTextFile(path, Build(instance, existing, preserve_existing))) {
         error = "写入服务器配置失败: " + path;
         return false;
     }
@@ -119,7 +119,7 @@ bool File::Read(const std::string& game_dir, const Instance& instance,
     const std::string path = Path(game_dir, instance);
     if (!tools::PathExists(path)) return true;
 
-    const std::string text = tools::ReadTextFile(path);
+    const std::string text = Directory::ReadTextFile(path);
     size_t start = 0;
     while (start <= text.size()) {
         const size_t end = text.find('\n', start);
@@ -214,7 +214,7 @@ bool File::Apply(const std::string& game_dir, const Instance& current,
             return false;
         }
     }
-    if (!tools::WriteTextFile(path, text)) {
+    if (!Directory::WriteTextFile(path, text)) {
         error = "写入服务器配置失败: " + path;
         return false;
     }
@@ -228,7 +228,7 @@ bool File::Ensure(const std::string& game_dir, const Instance& instance, std::st
     if (!Write(game_dir, instance, true, error)) return false;
 
     const std::string eula = tools::JoinPath(dir, "eula.txt");
-    if (!tools::PathExists(eula) && !tools::WriteTextFile(eula, "eula=true\n")) {
+    if (!tools::PathExists(eula) && !Directory::WriteTextFile(eula, "eula=true\n")) {
         error = "写入 EULA 文件失败: " + eula;
         return false;
     }
@@ -238,7 +238,7 @@ bool File::Ensure(const std::string& game_dir, const Instance& instance, std::st
          {"banned-players.json", "banned-ips.json", "ops.json", "whitelist.json"}) {
         const std::string path = tools::JoinPath(dir, name);
         if (tools::PathExists(path)) continue;
-        if (!tools::WriteTextFile(path, "[]\n")) {
+        if (!Directory::WriteTextFile(path, "[]\n")) {
             error = "写入服务端名单文件失败: " + path;
             return false;
         }

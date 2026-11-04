@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 // 网络传输：WinHTTP 下载与取文本。
 #include "app/directory/Directory.h"
 #include "app/tools/tools.h"
@@ -173,38 +174,48 @@ bool FetchToFile(const std::string& url, const std::string& path,
 
 }  // namespace
 
-namespace tools {
-
-bool DownloadFile(const std::string& url, const std::string& path, std::string& error) {
+bool Network::download(const std::string& url, const std::string& path, std::string& error) {
     return FetchToFile(url, path, nullptr, error);
 }
 
-bool DownloadFile(const std::string& url, const std::string& path, std::string& error,
-                  const std::function<bool()>& cancelled) {
+bool Network::download(const std::string& url, const std::string& path, std::string& error,
+                       const std::function<bool()>& cancelled) {
     return FetchToFile(url, path, nullptr, error, cancelled);
 }
 
-bool HttpGet(const std::string& url, std::string& out, std::string& error) {
+bool Network::http(HttpCMD command, const std::string& url, std::string& out,
+                   std::string& error) {
+    if (command != HttpCMD::GET) {
+        error = "unsupported_http_command";
+        return false;
+    }
     const std::string temp = TempBodyPath();
-    if (!DownloadFile(url, temp, error)) return false;
-    out = ReadTextFile(temp);
+    if (!download(url, temp, error)) {
+        std::error_code ignored;
+        std::filesystem::remove(tools::ToPath(temp), ignored);
+        return false;
+    }
+    out = Directory::ReadTextFile(temp);
     std::error_code ec;
     std::filesystem::remove(tools::ToPath(temp), ec);
-    return true;
+    return !out.empty();
 }
 
-bool HttpGet(const std::string& url, const std::vector<std::string>& headers, std::string& out,
-             std::string& error) {
+bool Network::http(HttpCMD command, const std::string& url,
+                   const std::vector<std::string>& headers, std::string& out,
+                   std::string& error) {
+    if (command != HttpCMD::GET) {
+        error = "unsupported_http_command";
+        return false;
+    }
     const std::string temp = TempBodyPath();
     if (!FetchToFile(url, temp, &headers, error)) {
         std::error_code ignored;
         std::filesystem::remove(tools::ToPath(temp), ignored);
         return false;
     }
-    out = ReadTextFile(temp);
+    out = Directory::ReadTextFile(temp);
     std::error_code ec;
     std::filesystem::remove(tools::ToPath(temp), ec);
     return !out.empty();
 }
-
-}  // namespace tools

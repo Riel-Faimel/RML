@@ -65,7 +65,7 @@ void Sources::ResetDefaults() {
 void Sources::Reload() {
     records_.clear();
 
-    const std::string text = tools::ReadTextFile(path_);
+    const std::string text = Directory::ReadTextFile(path_);
     Json::Value root;
     Json json;
     std::string parse_error;
@@ -107,7 +107,7 @@ bool Sources::Save(std::string& error) const {
     }
     root.Set("sources", std::move(list));
 
-    if (!tools::WriteTextFile(path_, root.Dump())) {
+    if (!Directory::WriteTextFile(path_, root.Dump())) {
         error = "sources.json 写入失败: " + path_;
         return false;
     }

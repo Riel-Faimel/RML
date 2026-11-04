@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-class TaskManager {
+class NetTask {
 public:
     using Id = uint64_t;
 
@@ -37,8 +37,8 @@ public:
 
     using Done = std::function<void(bool ok, const std::string& error)>;
 
-    TaskManager();
-    ~TaskManager();
+    NetTask();
+    ~NetTask();
 
     Id Submit(std::string title, std::vector<Resource> resources, Done done = {});
 

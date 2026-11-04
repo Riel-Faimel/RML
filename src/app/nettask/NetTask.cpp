@@ -1,4 +1,5 @@
-#include "app/tasks/TaskManager.h"
+#include "app/network/Network.h"
+#include "app/nettask/NetTask.h"
 
 #include <chrono>
 #include <filesystem>
@@ -7,9 +8,9 @@
 
 #include "app/tools/tools.h"
 
-TaskManager::TaskManager() : worker_([this] { Run(); }) {}
+NetTask::NetTask() : worker_([this] { Run(); }) {}
 
-TaskManager::~TaskManager() {
+NetTask::~NetTask() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
@@ -21,7 +22,7 @@ TaskManager::~TaskManager() {
     if (worker_.joinable()) worker_.join();
 }
 
-TaskManager::Id TaskManager::Submit(std::string title, std::vector<Resource> resources, Done done) {
+NetTask::Id NetTask::Submit(std::string title, std::vector<Resource> resources, Done done) {
     std::lock_guard<std::mutex> lock(mutex_);
     Task task;
     task.id = next_id_++;
@@ -36,7 +37,7 @@ TaskManager::Id TaskManager::Submit(std::string title, std::vector<Resource> res
     return tasks_.back().id;
 }
 
-bool TaskManager::Run(const std::string& title, std::vector<Resource> resources,
+bool NetTask::Run(const std::string& title, std::vector<Resource> resources,
                       std::string& error) {
     const Id id = Submit(title, std::move(resources), {});
     std::unique_lock<std::mutex> lock(mutex_);
@@ -58,7 +59,7 @@ bool TaskManager::Run(const std::string& title, std::vector<Resource> resources,
     return false;
 }
 
-void TaskManager::Pause(Id id) {
+void NetTask::Pause(Id id) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& task : tasks_) {
         if (task.id != id || task.status != "running") continue;
@@ -68,7 +69,7 @@ void TaskManager::Pause(Id id) {
     }
 }
 
-void TaskManager::Resume(Id id) {
+void NetTask::Resume(Id id) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& task : tasks_) {
         if (task.id != id || task.status != "paused") continue;
@@ -79,7 +80,7 @@ void TaskManager::Resume(Id id) {
     cv_.notify_all();
 }
 
-void TaskManager::Cancel(Id id) {
+void NetTask::Cancel(Id id) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& task : tasks_) {
         if (task.id != id) continue;
@@ -92,7 +93,7 @@ void TaskManager::Cancel(Id id) {
     cv_.notify_all();
 }
 
-std::vector<TaskManager::Snapshot> TaskManager::Snapshots() const {
+std::vector<NetTask::Snapshot> NetTask::Snapshots() const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<Snapshot> out;
     out.reserve(tasks_.size());
@@ -111,12 +112,12 @@ std::vector<TaskManager::Snapshot> TaskManager::Snapshots() const {
     return out;
 }
 
-void TaskManager::WaitIfPaused(Task& task) {
+void NetTask::WaitIfPaused(Task& task) {
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [&] { return !task.paused || task.cancelled || stopping_; });
 }
 
-void TaskManager::Run() {
+void NetTask::Run() {
     while (true) {
         Id id = 0;
         {
@@ -220,7 +221,7 @@ void TaskManager::Run() {
     }
 }
 
-bool TaskManager::DownloadOne(Task& task, const Resource& resource, std::string& error) {
+bool NetTask::DownloadOne(Task& task, const Resource& resource, std::string& error) {
     if (resource.dest.empty()) {
         error = "下载目标为空: " + resource.label;
         return false;
@@ -254,7 +255,7 @@ bool TaskManager::DownloadOne(Task& task, const Resource& resource, std::string&
     for (int attempt = 0; attempt < 3; ++attempt) {
         if (attempt > 0) std::this_thread::sleep_for(std::chrono::milliseconds(300));
         error.clear();
-        downloaded = tools::DownloadFile(resource.url, part, error, [this, &task] {
+        downloaded = Network::download(resource.url, part, error, [this, &task] {
             std::lock_guard<std::mutex> lock(mutex_);
             return task.cancelled;
         });

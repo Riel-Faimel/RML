@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "app/tools/Json.h"
+#include "app/tools/tools.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -55,6 +56,79 @@ std::string Directory::Join(const std::string& parent, const std::string& child)
 
 std::string Directory::GameFile(const std::string& name) const {
     return Join(game_root_, name);
+}
+
+namespace {
+
+bool WriteTextEnsured(const std::string& path, std::string_view text) {
+    const size_t slash = path.find_last_of("/\\");
+    if (slash != std::string::npos) {
+        std::string error;
+        if (!tools::EnsureDir(path.substr(0, slash), error)) return false;
+    }
+    return tools::WriteTextFile(path, text);
+}
+
+}  // namespace
+
+bool Directory::ReadGameText(const std::string& relative, std::string& out) const {
+    const std::string path = GameFile(relative);
+    if (!tools::PathExists(path)) return false;
+    out = tools::ReadTextFile(path);
+    return !out.empty();
+}
+
+bool Directory::WriteGameText(const std::string& relative, std::string_view text) const {
+    return WriteTextEnsured(GameFile(relative), text);
+}
+
+bool Directory::ReadVersionText(const std::string& id, const std::string& relative,
+                                std::string& out) const {
+    const std::string path = Join(VersionDir(id), relative);
+    if (!tools::PathExists(path)) return false;
+    out = tools::ReadTextFile(path);
+    return !out.empty();
+}
+
+bool Directory::WriteVersionText(const std::string& id, const std::string& relative,
+                                 std::string_view text) const {
+    return WriteTextEnsured(Join(VersionDir(id), relative), text);
+}
+
+bool Directory::ReadRepositoryModText(const std::string& file, std::string& out) const {
+    const std::string path = Join(RepositoryModsRoot(), file + ".rml.json");
+    if (!tools::PathExists(path)) return false;
+    out = tools::ReadTextFile(path);
+    return !out.empty();
+}
+
+bool Directory::WriteRepositoryModText(const std::string& file, std::string_view text) const {
+    return WriteTextEnsured(Join(RepositoryModsRoot(), file + ".rml.json"), text);
+}
+
+bool Directory::ReadDataFile(const std::string& name, std::string& out) {
+    const std::string path = DataFile(name);
+    if (!tools::PathExists(path)) return false;
+    out = tools::ReadTextFile(path);
+    return !out.empty();
+}
+
+bool Directory::WriteDataFile(const std::string& name, std::string_view text) {
+    return WriteTextEnsured(DataFile(name), text);
+}
+
+std::string Directory::ReadTextFile(const std::string& path) {
+    return tools::ReadTextFile(path);
+}
+
+bool Directory::ReadTextFile(const std::string& path, std::string& out) {
+    if (!tools::PathExists(path)) return false;
+    out = tools::ReadTextFile(path);
+    return true;
+}
+
+bool Directory::WriteTextFile(const std::string& path, std::string_view text) {
+    return WriteTextEnsured(path, text);
 }
 
 std::string Directory::VersionsRoot() const { return Join(game_root_, "versions"); }

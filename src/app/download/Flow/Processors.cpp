@@ -33,7 +33,7 @@ bool ShaMatches(const std::string& path, const std::string& sha1) {
 }
 
 std::string LogTail(const std::string& path) {
-    std::string text = tools::ReadTextFile(path);
+    std::string text = Directory::ReadTextFile(path);
     if (text.size() > 1200) text = text.substr(text.size() - 1200);
     return text;
 }

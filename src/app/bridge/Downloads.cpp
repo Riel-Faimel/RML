@@ -15,7 +15,7 @@ QString FromStd(const std::string& text) { return QString::fromStdString(text); 
 
 }  // namespace
 
-BridgeDownloads::BridgeDownloads(Launch& launch, TaskManager& tasks, QObject* context,
+BridgeDownloads::BridgeDownloads(Launch& launch, NetTask& tasks, QObject* context,
                                  Notify download_changed, Notify changed,
                                  InstalledHandler installed)
     : launch_(launch),

@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/Forge/Forge.h"
 
 #include <algorithm>
@@ -77,7 +78,7 @@ bool Forge::Promotions(const std::string& root, std::string& json, std::string& 
         return false;
     }
     if (cache_.TryGet(kPromotions, json, 60 * 60)) return true;
-    if (!tools::HttpGet(kPromotions, json, error)) {
+    if (!Network::http(HttpCMD::GET, kPromotions, json, error)) {
         error = "拿不到 Forge 推荐版本清单: " + error;
         return false;
     }
@@ -88,7 +89,7 @@ bool Forge::Promotions(const std::string& root, std::string& json, std::string& 
 bool Forge::Versions(const std::string& root, std::string& xml, std::string& error) const {
     const std::string url = MetadataUrl(root);
     if (cache_.TryGet(url, xml, 60 * 60)) return true;
-    if (!tools::HttpGet(url, xml, error)) {
+    if (!Network::http(HttpCMD::GET, url, xml, error)) {
         error = "拿不到 Forge 版本清单: " + url;
         return false;
     }

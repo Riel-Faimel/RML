@@ -1,3 +1,4 @@
+#include "app/directory/Directory.h"
 #include "app/launch/Version/Version.h"
 
 #include <algorithm>
@@ -68,11 +69,11 @@ bool Version::Rename(const std::string& id, const std::string& name) {
     Json::Value root = Json::Value::Object();
     Json json;
     std::string error;
-    const std::string existing = tools::ReadTextFile(marker_path);
+    const std::string existing = Directory::ReadTextFile(marker_path);
     if (!existing.empty() && !json.Parse(existing, root, error)) return false;
 
     root.Set("name", Json::Value::String(name));
-    if (!tools::WriteTextFile(marker_path, root.Dump())) return false;
+    if (!Directory::WriteTextFile(marker_path, root.Dump())) return false;
 
     paths_.RefreshVersions();
     Select(id);
@@ -94,7 +95,7 @@ bool Version::LoadOne(const std::string& id, Detail& out, std::string& error, in
     }
 
     const std::string json_path = paths_.VersionJson(id);
-    const std::string text = tools::ReadTextFile(json_path);
+    const std::string text = Directory::ReadTextFile(json_path);
     if (text.empty()) {
         error = "读不到版本描述: " + json_path;
         return false;

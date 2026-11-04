@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/Loader/Loader.h"
 
 #include "app/tools/Json.h"
@@ -12,7 +13,7 @@ bool Loader::Fabric(const std::string& mc_version, std::vector<Entry>& out,
 
     std::string text;
     if (!cache_.TryGet(url, text, 60 * 60)) {
-        if (!tools::HttpGet(url, text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, text, error)) return false;
         cache_.Put(url, text);
     }
 
@@ -58,7 +59,7 @@ bool Loader::FabricProfile(const std::string& mc_version, const std::string& loa
     const std::string url = sources_.FabricRoot() + "/v2/versions/loader/" + mc_version + "/" +
                             loader_version + "/profile/json";
     if (cache_.TryGet(url, json, 0)) return true;
-    if (!tools::HttpGet(url, json, error)) return false;
+    if (!Network::http(HttpCMD::GET, url, json, error)) return false;
     cache_.Put(url, json);
     return true;
 }
@@ -68,7 +69,7 @@ bool Loader::FabricServerProfile(const std::string& mc_version, const std::strin
     const std::string url = sources_.FabricRoot() + "/v2/versions/loader/" + mc_version + "/" +
                             loader_version + "/server/json";
     if (cache_.TryGet(url, json, 0)) return true;
-    if (!tools::HttpGet(url, json, error)) return false;
+    if (!Network::http(HttpCMD::GET, url, json, error)) return false;
     cache_.Put(url, json);
     return true;
 }

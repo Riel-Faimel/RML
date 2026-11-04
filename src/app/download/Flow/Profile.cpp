@@ -52,7 +52,7 @@ bool PickJava(const Context& context, const std::string& mc_version, std::string
     Json::Value root;
     Json json;
     std::string parse_error;
-    if (json.Parse(tools::ReadTextFile(json_path), root, parse_error) &&
+    if (json.Parse(Directory::ReadTextFile(json_path), root, parse_error) &&
         root["javaVersion"].IsObject()) {
         major = static_cast<int>(root["javaVersion"]["majorVersion"].AsInt(8));
     }
@@ -185,7 +185,7 @@ bool Profile::Install(const Context& context, const Request& request, const std:
     Json::Value profile;
     Json json;
     std::string parse_error;
-    if (!json.Parse(tools::ReadTextFile(profile_path), profile, parse_error)) {
+    if (!json.Parse(Directory::ReadTextFile(profile_path), profile, parse_error)) {
         error = "install_profile.json 解析失败: " + parse_error;
         return false;
     }
@@ -205,7 +205,7 @@ bool Profile::Install(const Context& context, const Request& request, const std:
 
         std::string version_path;
         if (!tools::ExtractEntry(installer_path, entry, profile_dir, version_path, error)) return false;
-        version_json = tools::ReadTextFile(version_path);
+        version_json = Directory::ReadTextFile(version_path);
 
         Json::Value version_root;
         Json version_parser;

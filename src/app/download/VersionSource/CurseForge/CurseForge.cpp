@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/CurseForge/CurseForge.h"
 
 #include "app/directory/Directory.h"
@@ -46,7 +47,7 @@ std::vector<std::string> AuthHeaders(const std::string& key) {
 
 std::string CurseForge::ApiKey() {
     const std::string path = Directory::DataFile("curseforge.key");
-    std::string text = tools::ReadTextFile(path);
+    std::string text = Directory::ReadTextFile(path);
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) {
         text.pop_back();
     }
@@ -80,7 +81,7 @@ bool CurseForge::Search(const std::string& query, const std::string& loader,
     std::string text;
     const std::string cache_key = "curseforge:search:" + url;
     if (!cache_.TryGet(cache_key, text, kMaxAgeSeconds)) {
-        if (!tools::HttpGet(url, AuthHeaders(ApiKey()), text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, AuthHeaders(ApiKey()), text, error)) return false;
         cache_.Put(cache_key, text);
     }
 
@@ -127,7 +128,7 @@ bool CurseForge::Versions(const std::string& project_id, const std::string& load
     std::string text;
     const std::string cache_key = "curseforge:files:" + url;
     if (!cache_.TryGet(cache_key, text, kMaxAgeSeconds)) {
-        if (!tools::HttpGet(url, AuthHeaders(ApiKey()), text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, AuthHeaders(ApiKey()), text, error)) return false;
         cache_.Put(cache_key, text);
     }
 

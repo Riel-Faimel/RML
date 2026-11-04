@@ -11,14 +11,14 @@
 #include "app/bridge/Content.h"
 #include "app/bridge/DownloadState.h"
 #include "app/launch/Launch.h"
-#include "app/tasks/TaskManager.h"
+#include "app/nettask/NetTask.h"
 
 class BridgeDownloads {
 public:
     using Notify = std::function<void()>;
     using InstalledHandler = std::function<void(const std::string&)>;
 
-    BridgeDownloads(Launch& launch, TaskManager& tasks, QObject* context, Notify download_changed,
+    BridgeDownloads(Launch& launch, NetTask& tasks, QObject* context, Notify download_changed,
                     Notify changed, InstalledHandler installed);
 
     const QStringList& ContentResults() const { return content_.Results(); }
@@ -58,7 +58,7 @@ private:
     const QStringList* VersionIdsFor(int kind) const;
 
     Launch& launch_;
-    TaskManager& tasks_;
+    NetTask& tasks_;
     QObject* context_;
     Notify download_changed_;
     Notify changed_;

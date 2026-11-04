@@ -38,12 +38,12 @@ endif
 CORE_SOURCES := src/app/tools/Json.cpp \
                 src/app/tools/Json.Parser.cpp \
                 src/app/tools/Path.cpp \
-                src/app/tools/Http.cpp \
+                src/app/network/Network.cpp \
                 src/app/tools/Process.cpp \
                 src/app/tools/Sha1.cpp \
                 src/app/tools/Compat.cpp \
                 src/app/directory/Directory.cpp \
-                src/app/tasks/TaskManager.cpp \
+                src/app/nettask/NetTask.cpp \
                 src/app/launch/Version/Version.cpp \
                 src/app/launch/Environment/Environment.cpp \
                 src/app/launch/Starter/Starter.cpp \

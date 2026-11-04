@@ -26,18 +26,7 @@ std::string MavenToPath(std::string_view name);
 std::vector<std::string> ListDirectories(const std::string& path);
 std::vector<std::string> ListFiles(const std::string& path);
 
-// 下载到文件（WinHTTP，跟随重定向）。同步阻塞，调用方放线程里。
-bool DownloadFile(const std::string& url, const std::string& path, std::string& error);
-// 下载过程中可查询取消；用于任务模块在文件下载途中取消。
-bool DownloadFile(const std::string& url, const std::string& path, std::string& error,
-                  const std::function<bool()>& cancelled);
-
-// 取文本（清单、API 响应）。内部走 DownloadFile，少一份重复的 WinHTTP 逻辑。
-bool HttpGet(const std::string& url, std::string& out, std::string& error);
-
-// 带请求头的取文本（CurseForge 需要 x-api-key）
-bool HttpGet(const std::string& url, const std::vector<std::string>& headers, std::string& out,
-             std::string& error);
+// 网络请求由 Network 模块统一提供。
 
 // 启动一个进程并等它结束；退出码 0 视为成功。
 bool RunAndWait(const std::vector<std::string>& args, std::string& error);

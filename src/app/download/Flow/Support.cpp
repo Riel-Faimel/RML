@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/Flow/Support.h"
 
 #include <cctype>
@@ -122,7 +123,7 @@ bool Support::ReplaceTokens(const std::map<std::string, std::string>& tokens,
 std::string Support::RemoteSha1(const std::string& url) {
     std::string text;
     std::string error;
-    if (!tools::HttpGet(url, text, error)) return {};
+    if (!Network::http(HttpCMD::GET, url, text, error)) return {};
     text = Trim(text);
     if (text.size() != 40 || !IsHex(text)) return {};
     return tools::ToLower(text);
@@ -147,7 +148,7 @@ bool Support::DownloadFile(const std::string& url, const std::string& dest, cons
 
     const std::string part = dest + ".part";
     std::string download_error;
-    if (!tools::DownloadFile(url, part, download_error)) {
+    if (!Network::download(url, part, download_error)) {
         std::error_code ignored;
         std::filesystem::remove(tools::ToPath(part), ignored);
         error = "下载失败(" + url + "): " + download_error;
@@ -182,7 +183,7 @@ bool Support::EnsureVanillaJson(const Context& context, const std::string& mc_ve
         Json::Value root;
         Json json;
         std::string parse_error;
-        if (json.Parse(tools::ReadTextFile(path), root, parse_error) &&
+        if (json.Parse(Directory::ReadTextFile(path), root, parse_error) &&
             !root["id"].AsString().empty()) {
             return true;
         }
@@ -221,7 +222,7 @@ bool Support::EnsureClientJar(const Context& context, const std::string& mc_vers
     Json::Value root;
     Json json;
     std::string parse_error;
-    if (!json.Parse(tools::ReadTextFile(json_path), root, parse_error)) {
+    if (!json.Parse(Directory::ReadTextFile(json_path), root, parse_error)) {
         error = "读不到原版版本描述: " + json_path;
         return false;
     }
@@ -262,7 +263,7 @@ bool Support::ReadMainClass(const std::string& jar, const std::string& work_dir,
         return false;
     }
 
-    const std::string text = tools::ReadTextFile(extracted);
+    const std::string text = Directory::ReadTextFile(extracted);
     std::vector<std::string> lines;
     size_t start = 0;
     while (start <= text.size()) {

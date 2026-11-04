@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/Modrinth/Modrinth.h"
 
 #include "app/tools/Json.h"
@@ -52,7 +53,7 @@ bool Modrinth::Search(const std::string& query, const std::string& loader,
     std::string text;
     const std::string cache_key = "modrinth:search:" + url;
     if (!cache_.TryGet(cache_key, text, kMaxAgeSeconds)) {
-        if (!tools::HttpGet(url, text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, text, error)) return false;
         cache_.Put(cache_key, text);
     }
 
@@ -91,7 +92,7 @@ bool Modrinth::Versions(const std::string& project_id, const std::string& loader
     std::string text;
     const std::string cache_key = "modrinth:versions:" + url;
     if (!cache_.TryGet(cache_key, text, kMaxAgeSeconds)) {
-        if (!tools::HttpGet(url, text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, text, error)) return false;
         cache_.Put(cache_key, text);
     }
 

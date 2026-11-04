@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/Installer/Transfer/Transfer.h"
 
 #include <atomic>
@@ -10,7 +11,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "app/tasks/TaskManager.h"
+#include "app/nettask/NetTask.h"
 #include "app/tools/tools.h"
 
 namespace download {
@@ -72,10 +73,10 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
     if (total == 0) return true;
 
     if (task_manager_ != nullptr) {
-        std::vector<TaskManager::Resource> resources;
+        std::vector<NetTask::Resource> resources;
         resources.reserve(pending.size());
         for (const Task& task : pending) {
-            TaskManager::Resource resource;
+            NetTask::Resource resource;
             resource.url = task.url;
             resource.sha1 = task.sha1;
             resource.dest = task.dest;
@@ -143,7 +144,7 @@ bool Transfer::Run(const std::vector<Task>& tasks, const Progress& progress, Res
                         std::error_code ignored;
                         std::filesystem::remove(tools::ToPath(part), ignored);
 
-                        if (!tools::DownloadFile(task.url, part, local_error)) {
+                        if (!Network::download(task.url, part, local_error)) {
                             local_error = "下载失败: " + local_error;
                             tools::SleepMs(300);
                             continue;

@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/NeoForge/NeoForge.h"
 
 #include <algorithm>
@@ -100,7 +101,7 @@ std::string PickLatest(const std::vector<std::string>& versions, const std::stri
 
 bool NeoForge::Metadata(const std::string& url, std::string& xml, std::string& error) const {
     if (cache_.TryGet(url, xml, 60 * 60)) return true;
-    if (!tools::HttpGet(url, xml, error)) {
+    if (!Network::http(HttpCMD::GET, url, xml, error)) {
         error = "拿不到 NeoForge 版本清单: " + error;
         return false;
     }

@@ -100,7 +100,7 @@ bool Version::BuildAssetTasks(const launch::Version::Detail& detail, const std::
                               std::vector<Transfer::Task>& out, std::string& error) const {
     const Directory paths(version_.GameDir());
     const std::string index_path = paths.AssetIndexesRoot() + "/" + detail.asset_index + ".json";
-    const std::string text = tools::ReadTextFile(index_path);
+    const std::string text = Directory::ReadTextFile(index_path);
     if (text.empty()) {
         error = "读不到资源索引: " + index_path;
         return false;
@@ -181,7 +181,7 @@ bool Version::WriteMarker(const std::string& game_dir, const std::string& id,
     root.Set("loader", Json::Value::String(loader));
     root.Set("complete", Json::Value::Bool(complete));
     if (write_user) root.Set("user", Json::Value::Bool(user_installed));
-    return tools::WriteTextFile(paths.VersionDir(id) + "/rml.json", root.Dump());
+    return Directory::WriteTextFile(paths.VersionDir(id) + "/rml.json", root.Dump());
 }
 
 bool Version::ExtractNatives(const launch::Version::Detail& detail, std::string& error) const {
@@ -235,11 +235,11 @@ void Version::ApplyDefaults(const std::string& game_dir) {
     Directory(game_dir).EnsureModsRoot(mods_error);
 
     const std::string path = Directory(game_dir).GameFile("options.txt");
-    const std::string text = tools::ReadTextFile(path);
+    const std::string text = Directory::ReadTextFile(path);
 
     // 新装：直接给一份最小配置，游戏自己会补全其余项
     if (text.empty()) {
-        tools::WriteTextFile(path, "lang:zh_cn\n");
+        Directory::WriteTextFile(path, "lang:zh_cn\n");
         return;
     }
 
@@ -262,7 +262,7 @@ void Version::ApplyDefaults(const std::string& game_dir) {
     }
 
     if (!replaced) out = "lang:zh_cn\n" + out;
-    tools::WriteTextFile(path, out);
+    Directory::WriteTextFile(path, out);
 }
 
 bool Version::WriteVersionJson(const std::string& game_dir, const std::string& id,
@@ -271,7 +271,7 @@ bool Version::WriteVersionJson(const std::string& game_dir, const std::string& i
     const std::string version_dir = paths.VersionDir(id);
     if (!tools::EnsureDir(version_dir, error)) return false;
     const std::string path = paths.VersionJson(id);
-    if (!tools::WriteTextFile(path, json)) {
+    if (!Directory::WriteTextFile(path, json)) {
         error = "写入失败: " + path;
         return false;
     }

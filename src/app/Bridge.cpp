@@ -28,8 +28,8 @@ Bridge::Bridge(Launch& launch, QString account_name, int memory_mb, QObject* par
     connect(&task_timer_, &QTimer::timeout, this, &Bridge::RefreshTasks);
     task_timer_.start(500);
 
-    launch_.Downloader().Installers().Transfers().SetTaskManager(&tasks_);
-    launch_.Tools().SetTaskManager(&tasks_);
+    launch_.Downloader().Installers().Transfers().SetNetTask(&tasks_);
+    launch_.Tools().SetNetTask(&tasks_);
 }
 
 QString Bridge::GameDir() const { return QString::fromStdString(launch_.Versions().GameDir()); }
@@ -114,8 +114,7 @@ void Bridge::applyLaunchOptions(int memoryMb, const QString& gc, const QString& 
     root.Set("gc", Json::Value::String(gc_mode_.toStdString()));
     root.Set("jvmArgs", Json::Value::String(jvm_args_.toStdString()));
 
-    const std::string settings_path = Directory::SettingsFile();
-    tools::WriteTextFile(settings_path, root.Dump());
+    Directory::WriteDataFile("settings.json", root.Dump());
     emit changed();
 }
 
@@ -256,11 +255,11 @@ void Bridge::launchGame() {
             auto& installer = launch_.Downloader().Installers();
             auto& transfers = installer.Transfers();
             // 自动补齐有自己的进度条，不进入任务页。
-            TaskManager* task_sink = transfers.task_manager();
-            transfers.SetTaskManager(nullptr);
+            NetTask* task_sink = transfers.task_manager();
+            transfers.SetNetTask(nullptr);
             const bool repaired = installer.Versions().Install(transfers, progress,
                                                                report, repair_error);
-            transfers.SetTaskManager(task_sink);
+            transfers.SetNetTask(task_sink);
 
             const bool was_cancelled = cancel_requested_.load();
             launch::Starter::Command retry_command;

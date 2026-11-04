@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-class TaskManager;
+class NetTask;
 
 namespace launch {
 
@@ -36,14 +36,14 @@ public:
     bool Install(int major, std::string& error);
 
     // Java 的网络下载交给任务模块；安装/解压仍由这里负责。
-    void SetTaskManager(TaskManager* task_manager) { task_manager_ = task_manager; }
+    void SetNetTask(NetTask* task_manager) { task_manager_ = task_manager; }
 
 private:
     void Probe();
     void AddCandidate(const std::string& path, const std::string& source);
 
     std::vector<Java> javas_;
-    TaskManager* task_manager_ = nullptr;
+    NetTask* task_manager_ = nullptr;
 };
 
 }  // namespace launch

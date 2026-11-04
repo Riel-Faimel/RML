@@ -15,7 +15,7 @@
 #include "app/bridge/SourceRecords.h"
 #include "app/bridge/Versions.h"
 #include "app/launch/Launch.h"
-#include "app/tasks/TaskManager.h"
+#include "app/nettask/NetTask.h"
 #include "include/AccountProvider.h"
 
 class Bridge : public QObject {
@@ -168,7 +168,7 @@ private:
     QTimer task_timer_;
 
     BridgeVersions versions_;
-    TaskManager tasks_;
+    NetTask tasks_;
     BridgeDownloads downloads_;
     BridgeMods mods_;
 

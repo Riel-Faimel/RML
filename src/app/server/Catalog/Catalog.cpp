@@ -52,7 +52,7 @@ void Catalog::ScanInstallations() {
         const std::string marker_path = tools::JoinPath(dir, "rml.json");
         if (!tools::PathExists(marker_path)) continue;
 
-        const std::string text = tools::ReadTextFile(marker_path);
+        const std::string text = Directory::ReadTextFile(marker_path);
         if (text.empty()) continue;
 
         Json::Value marker;
@@ -100,7 +100,7 @@ void Catalog::LoadInstances() {
     const std::string path = ConfigPath();
     if (!tools::PathExists(path)) return;
 
-    const std::string text = tools::ReadTextFile(path);
+    const std::string text = Directory::ReadTextFile(path);
     if (text.empty()) return;
 
     Json::Value root;
@@ -170,7 +170,7 @@ bool Catalog::Save(std::string& error) const {
     root.Set("instances", std::move(instances));
 
     const std::string path = ConfigPath();
-    if (!tools::WriteTextFile(path, root.Dump())) {
+    if (!Directory::WriteTextFile(path, root.Dump())) {
         error = "写入服务端清单失败: " + path;
         return false;
     }

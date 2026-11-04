@@ -81,24 +81,28 @@ Settings ParseSettings(const std::string& text) {
 }
 
 // 首次运行：把 src/json 里的默认值抄一份到数据目录
-Settings LoadOrCreateSettings(const QString& path) {
-    if (!QFile::exists(path)) {
+Settings LoadOrCreateSettings() {
+    std::string text;
+    if (!Directory::ReadDataFile("settings.json", text)) {
         QString json_dir = QCoreApplication::applicationDirPath() + QStringLiteral("/json");
         if (!QDir(json_dir).exists()) json_dir = QStringLiteral(RML_JSON_DIR);
         const std::string defaults =
-            tools::ReadTextFile((json_dir + QStringLiteral("/settings.json")).toStdString());
-        if (!defaults.empty()) tools::WriteTextFile(path.toStdString(), defaults);
+            Directory::ReadTextFile((json_dir + QStringLiteral("/settings.json")).toStdString());
+        if (!defaults.empty()) {
+            Directory::WriteDataFile("settings.json", defaults);
+            text = defaults;
+        }
     }
-    return ParseSettings(tools::ReadTextFile(path.toStdString()));
+    return ParseSettings(text);
 }
 
-void SaveSettings(const QString& path, const Settings& settings) {
+void SaveSettings(const Settings& settings) {
     Json::Value root = Json::Value::Object();
     root.Set("gameDir", Json::Value::String(settings.game_dir));
     root.Set("selectedVersion", Json::Value::String(settings.selected_version));
     root.Set("username", Json::Value::String(settings.username));
     root.Set("memoryMb", Json::Value::Int(settings.memory_mb));
-    tools::WriteTextFile(path.toStdString(), root.Dump());
+    Directory::WriteDataFile("settings.json", root.Dump());
 }
 
 }  // namespace
@@ -117,8 +121,7 @@ int main(int argc, char** argv) {
     qInfo() << "启动，数据目录:" << DataDir();
 #endif
 
-    const QString settings_path = QString::fromStdString(Directory::SettingsFile());
-    Settings settings = LoadOrCreateSettings(settings_path);
+    Settings settings = LoadOrCreateSettings();
     if (settings.game_dir.empty()) {
         // 默认指向原版启动器的位置：%APPDATA%\.minecraft
         settings.game_dir = Directory::DefaultGameRoot();
@@ -165,7 +168,7 @@ int main(int argc, char** argv) {
 
     const QString selected = bridge.Selected();
     if (!selected.isEmpty()) settings.selected_version = selected.toStdString();
-    SaveSettings(settings_path, settings);
+    SaveSettings(settings);
 
     return code;
 }

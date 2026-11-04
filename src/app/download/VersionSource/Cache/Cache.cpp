@@ -1,3 +1,4 @@
+#include "app/directory/Directory.h"
 #include "app/download/VersionSource/Cache/Cache.h"
 
 #include <chrono>
@@ -27,14 +28,14 @@ bool Cache::TryGet(const std::string& key, std::string& out, int max_age_seconds
         if (age > std::chrono::seconds(max_age_seconds)) return false;
     }
 
-    out = tools::ReadTextFile(path);
+    out = Directory::ReadTextFile(path);
     return !out.empty();
 }
 
 void Cache::Put(const std::string& key, const std::string& value) const {
     std::string error;
     tools::EnsureDir(root_, error);
-    tools::WriteTextFile(PathFor(key), value);
+    Directory::WriteTextFile(PathFor(key), value);
 }
 
 }  // namespace versionsource

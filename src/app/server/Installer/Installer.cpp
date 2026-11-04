@@ -87,7 +87,7 @@ bool WriteServerMarker(const launch::Version& versions, const std::string& id,
     }
 
     const std::string path = tools::JoinPath(dir, "rml.json");
-    if (!tools::WriteTextFile(path, root.Dump())) {
+    if (!Directory::WriteTextFile(path, root.Dump())) {
         error = "写入服务端安装标记失败: " + path;
         return false;
     }
@@ -289,7 +289,7 @@ bool Installer::Prepare(const std::string& id, const std::string& name, const st
         Json::Value marker;
         Json parser;
         std::string parse_error;
-        const std::string text = tools::ReadTextFile(marker_path);
+        const std::string text = Directory::ReadTextFile(marker_path);
         if (text.empty() || !parser.Parse(text, marker, parse_error) ||
             marker["kind"].AsString() != "server") {
             error = "版本目录被占用: " + dir + "（已有非服务端版本）";

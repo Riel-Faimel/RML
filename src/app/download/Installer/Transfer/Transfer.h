@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-class TaskManager;
+class NetTask;
 
 namespace download {
 namespace installer {
@@ -42,12 +42,12 @@ public:
     static bool Verify(const std::string& path, const std::string& sha1);
 
     // 安装流程的下载批次交给任务模块；自动补全传 nullptr。
-    void SetTaskManager(TaskManager* task_manager) { task_manager_ = task_manager; }
-    TaskManager* task_manager() const { return task_manager_; }
+    void SetNetTask(NetTask* task_manager) { task_manager_ = task_manager; }
+    NetTask* task_manager() const { return task_manager_; }
 
 private:
     mutable std::atomic<bool> cancel_{false};
-    TaskManager* task_manager_ = nullptr;
+    NetTask* task_manager_ = nullptr;
 };
 
 }  // namespace installer

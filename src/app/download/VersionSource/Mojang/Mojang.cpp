@@ -1,3 +1,4 @@
+#include "app/network/Network.h"
 #include "app/download/VersionSource/Mojang/Mojang.h"
 
 #include "app/tools/Json.h"
@@ -44,7 +45,7 @@ bool Mojang::List(std::vector<Entry>& out, std::string& error) const {
 
     std::string text;
     if (!cache_.TryGet(url, text, kMojangMaxAgeSeconds)) {
-        if (!tools::HttpGet(url, text, error)) return false;
+        if (!Network::http(HttpCMD::GET, url, text, error)) return false;
         cache_.Put(url, text);
     }
 
@@ -74,7 +75,7 @@ bool Mojang::List(std::vector<Entry>& out, std::string& error) const {
 
 bool Mojang::Fetch(const std::string& url, std::string& json, std::string& error) const {
     if (cache_.TryGet(url, json, 0)) return true;
-    if (!tools::HttpGet(url, json, error)) return false;
+    if (!Network::http(HttpCMD::GET, url, json, error)) return false;
     cache_.Put(url, json);
     return true;
 }

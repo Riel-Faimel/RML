@@ -5,6 +5,7 @@
 #include <thread>
 #include <vector>
 
+#include "app/directory/Directory.h"
 #include "app/download/Installer/Placement/Placement.h"
 #include "app/download/Installer/Transfer/Transfer.h"
 #include "app/tools/Json.h"
@@ -23,7 +24,7 @@ bool ContainsValue(const std::vector<std::string>& values, const std::string& wa
 
 }  // namespace
 
-BridgeContent::BridgeContent(Launch& launch, TaskManager& tasks, QObject* context,
+BridgeContent::BridgeContent(Launch& launch, NetTask& tasks, QObject* context,
                              BridgeDownloadState& state, Notify download_changed)
     : launch_(launch),
       tasks_(tasks),
@@ -186,7 +187,7 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         if (kind == "shader") placement_kind = download::installer::Placement::Kind::Shaderpack;
         if (kind == "resourcepack") placement_kind = download::installer::Placement::Kind::Resourcepack;
 
-        TaskManager::Resource resource;
+        NetTask::Resource resource;
         resource.url = file.url;
         resource.sha1 = file.sha1;
         resource.dest = download::installer::Placement::Resolve(instance_dir, placement_kind,
@@ -201,8 +202,8 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
         tasks_.Submit("下载 " + (project_name.empty() ? file.filename : project_name),
                       {resource},
                       [this, kind, project_id, project_name, version_name, game_versions, loaders,
-                       dest = resource.dest, filename = file.filename, sha1 = file.sha1](
-                          bool ok, const std::string& download_error) {
+                       instance_dir, dest = resource.dest, filename = file.filename,
+                       sha1 = file.sha1](bool ok, const std::string& download_error) {
                           std::string error = download_error;
                           if (ok && kind == "mod") {
                               Json::Value meta = Json::Value::Object();
@@ -223,7 +224,8 @@ void BridgeContent::Install(int index, const std::string& mc_version, const std:
                               }
                               meta.Set("gameVersions", game_versions_json);
                               meta.Set("loaders", loaders_json);
-                              if (!tools::WriteTextFile(dest + ".rml.json", meta.Dump())) {
+                              if (!Directory(instance_dir).WriteRepositoryModText(
+                                      filename, meta.Dump())) {
                                   ok = false;
                                   error = "写入 Mod 仓库描述失败: " + dest;
                               }
